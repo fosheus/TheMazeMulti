@@ -1,0 +1,21 @@
+g++ -framework sfml-window -framework sfml-graphics -framework sfml-system 
+main.cpp
+Animation.cpp
+AssetManager.cpp
+ClientPacketManager.cpp
+ClientSocketManager.cpp
+GameState.cpp
+Entity.cpp
+EntityModel.cpp
+GameServer.cpp
+InputManager.cpp
+JoiningState.cpp
+MainMenuState.cpp
+Maze.cpp
+MazeConfig.cpp
+MazeRender.cpp
+ServerPacketManager.cpp
+ServerSocketManager.cpp
+SplashState.cpp
+StateMachine.cpp
+ -o TheMazeMulti
