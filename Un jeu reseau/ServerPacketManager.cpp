@@ -5,203 +5,34 @@
 
 ServerPacketManager::~ServerPacketManager()
 {
-	socketManager.stopServer();
+	socketManager.unbind();
 }
 
-ServerPacketManager::ServerPacketManager(GameDataRef data, IServerCallback * server, unsigned short port) :_data(data),socketManager(data,this,port)
+CustomPacket ServerPacketManager::generatePacketHeaderFor(int clientId)
+{
+	return CustomPacket();
+}
+
+ServerPacketManager::ServerPacketManager(GameDataRef data, IServerCallback * server, unsigned short port) :_data(data)
 {
 	this->server = server;
+	socketManager.bind(port);
 }
 
-void ServerPacketManager::packetReceived(CustomPacket & packet)
-{
-	sf::Uint8 code;
-	packet >> code;
-	switch (code)
-	{
 
-	case Common::ENTITYPOS:
-		server->entityModel(entityPosReceived(packet)[0]);
-		break;
-	case Common::NEWGAME :
-		server->newGame(newGameReceived(packet));
-		break;
-	
-	case Common::LEVELGENERATED:
-		server->levelGenerated(levelGeneratedReceived(packet));
-		break;
-	case Common::NAME : 
-		server->changeClientName(nameReceived(packet));
-		break;
-	case Common::PING :
-		pingReceived(packet);
-		break;
-	case Common::MOVELIST:
-		server->updateFromMoveList(moveListReceived(packet));
-		break;
-	case Common::WELCOME:
-	case Common::EVENT:
-	case Common::GENERATELEVEL:
-	case Common::LEVELCOMPLETED:
-	case Common::DISCONNECT:
-		std::cout << "unimplemented packet received " + std::to_string(code) << std::endl;
-		break;
-	default:
-		std::cout << "undefined packet received " + std::to_string(code) << std::endl;
-		break;
-	}
-}
-
-int ServerPacketManager::handleNewClient()
-{
-	EntityModel* em;
-	em = this->server->newClientConnected();
-
-	CustomPacket packet(em->getId(), false);
-	sf::Uint8 code = Common::WELCOME;
-	packet << code << em->getId();
-	socketManager.sendPacket(packet);
-
-	packet.clear();
-	std::map<sf::Uint16, EntityModel*> entities = server->getAllEntities();
-	std::map<sf::Uint16, EntityModel*>::iterator it;
-	code = Common::ENTITYPOS;
-	packet << code;
-	packet << (sf::Uint16)entities.size();
-	for (it = entities.begin(); it != entities.end(); it++) {
-		packet << *it->second;
-	}
-	packet.setId(0);
-	socketManager.sendPacket(packet);
-	return em->getId();
-}
-
-sf::Uint16 ServerPacketManager::welcomeReceived(CustomPacket & packet)
-{
-	return sf::Uint16();
-}
-
-std::vector<EntityModel> ServerPacketManager::entityPosReceived(CustomPacket & packet)
-{
-	std::vector<EntityModel> ems;
-	EntityModel em;
-	while (!packet.endOfPacket()) {
-		packet >> em;
-		ems.push_back(em);
-	}
-	return ems;
-}
-
-int ServerPacketManager::newGameReceived(CustomPacket & packet)
-{
-	sf::Uint16 id;
-	packet >> id;
-	return id;
-}
-
-void ServerPacketManager::startGameReceived(CustomPacket & packet)
-{
-}
-
-int ServerPacketManager::eventReceived(CustomPacket & packet)
-{
-	return 0;
-}
-
-int ServerPacketManager::levelGeneratedReceived(CustomPacket & packet)
-{
-	return 0;
-}
-
-int ServerPacketManager::disconnectReceived(CustomPacket & packet)
-{
-	return 0;
-}
-
-MazeConfig ServerPacketManager::generateLevelReceived(CustomPacket & packet)
-{
-	return MazeConfig();
-}
-
-sf::Uint16 ServerPacketManager::levelCompletedReceived(CustomPacket & packet)
-{
-	return sf::Uint16();
-}
-
-sf::Uint16 ServerPacketManager::getNextClientId()
-{
-	return server->getNextEntityId();
-}
-
-void ServerPacketManager::lostConnection()
-{
-
-}
-
-std::pair<sf::Uint16, sf::String> ServerPacketManager::nameReceived(CustomPacket & packet)
-{
-	std::pair<sf::Uint16, sf::String> ret;
-	sf::String name;
-	sf::Uint16 id;
-
-	packet >> id >> name;
-
-	ret.first = id;
-	ret.second = name;
-	return ret;
-}
-
-sf::Uint16 ServerPacketManager::pingReceived(CustomPacket & packet)
-{
-	sf::Uint16 id;
-	packet >> id;
-	packet.clear();
-	packet.setId(id);
-	packet.setSetAsDatagram(false);
-	packet << (sf::Uint8)Common::PING << 0;
-	socketManager.sendPacket(packet);
-	return id;
-}
-
-MoveList ServerPacketManager::moveListReceived(CustomPacket & packet)
-{
-	sf::Uint16 id;
-	MoveList ml(0);
-	packet >> ml;
-	return ml;
-}
-
-void ServerPacketManager::clientLostConnection(sf::Uint16 id)
-{
-	server->removeClient(id);
-	CustomPacket packet(0,false);
-	sf::Uint8 code = Common::DISCONNECT;
-	packet << code << id;
-	socketManager.sendPacket(packet);
-
-}
-
-void ServerPacketManager::startServer()
-{
-	socketManager.startServer();
-}
-
-void ServerPacketManager::stopServer()
-{
-	socketManager.stopServer();
-}
-
-void ServerPacketManager::handleClients()
-{
-	socketManager.receivePackets();
-	socketManager.receiveReliablePackets();
-	socketManager.sendWaitingPackets();
-}
 
 void ServerPacketManager::receiveData()
 {
+	std::queue<CustomPacket> receivedPackets;
 	socketManager.receivePackets();
-	socketManager.receiveReliablePackets();
+	receivedPackets = socketManager.getReceivedPackets();
+	int queueSize = receivedPackets.size();
+	for (int i = 0; i < queueSize; i++) {
+		handlePacket(receivedPackets.front());
+		receivedPackets.pop();
+	}
+
+	updateClientsAcks();
 }
 
 void ServerPacketManager::sendWaitingData()
@@ -209,50 +40,219 @@ void ServerPacketManager::sendWaitingData()
 	socketManager.sendWaitingPackets();
 }
 
-void ServerPacketManager::broadcastEntityModel(EntityModel & em)
+void ServerPacketManager::sendBodyPacketToClient(sf::Packet bodyPacket, int clientId)
 {
-	CustomPacket packet(0, true);
-	sf::Uint8 code = Common::ENTITYPOS;
-	packet << code << (sf::Uint16)1 <<em;
-	socketManager.sendPacket(packet);
+	CustomPacket packet;
+	const void * body = bodyPacket.getData();
+	int size = bodyPacket.getDataSize();
+
+	packet = generatePacketHeaderFor(clientId);
+
+	packet.packet.append(body, size);
+	packet.address = clientsProxy[clientId].address;
+	packet.port = clientsProxy[clientId].port;
+
+	socketManager.addToSendList(packet);
+
+	
 }
 
-void ServerPacketManager::broadcastLevelState(std::map<sf::Uint16,EntityModel*> & entities)
+void ServerPacketManager::broadcastBodyPacketToClients(sf::Packet bodyPacket)
 {
-	std::map<sf::Uint16, EntityModel*>::iterator it;
-	CustomPacket packet(0, true);
-	sf::Uint8 code = Common::ENTITYPOS;
-	sf::Uint16 size = entities.size();
-	packet << code << size;
-	for (it = entities.begin(); it != entities.end(); it++) {
-		packet << *it->second;
+	CustomPacket packet;
+	const void * body = bodyPacket.getData();
+	int size = bodyPacket.getDataSize();
+
+	for (int i = 0; i < MAX_CONNECTION; i++) {
+
+		packet = generatePacketHeaderFor(i);
+
+		packet.packet.append(body, size);
+		packet.address = clientsProxy[i].address;
+		packet.port = clientsProxy[i].port;
+
+		socketManager.addToSendList(packet);
+
 	}
-	socketManager.sendPacket(packet);
 }
 
-void ServerPacketManager::broadcastLevelCompleted(sf::Uint16 id)
+
+
+void ServerPacketManager::handlePacket(CustomPacket & packet)
 {
-	CustomPacket packet(0,false);
-	sf::Uint8 code = Common::LEVELCOMPLETED;
-	packet << code << id;
-	socketManager.sendPacket(packet);
-}
 
-void ServerPacketManager::sendSeedDimension(MazeConfig config)
+	RemoteProxy * clientProxy = nullptr;
+	Common::PacketHeader header;
+	packet.packet >> header;
+	//verify protocoleId
+	if (header.protocolId != Common::PROTOCOL_ID) {
+		//not a packet for this application, ignore it
+		return;
+	}
+
+	switch (header.packetType) {
+	case Common::CONNECTION_REQUEST:
+		connectionRequestPacket(packet);
+		break;
+	case Common::GAME_DATA:
+		gameDataPacket(packet);
+		break;
+	case Common::DISCONNECTION_REQUEST:
+		disconnectionRequestPacket(packet);
+		break;
+	default:
+		break;
+	}
+
+}
+void ServerPacketManager::updateClientsAcks()
 {
-	CustomPacket packet(0,false);
-	sf::Uint8 code = Common::GENERATELEVEL;
-	packet << code << config;
-	socketManager.sendPacket(packet);
+	for (int i = 0; i < MAX_CONNECTION; i++) {
+		if (clientsConnected[i]) {
+			clientsProxy[i].deliveryPacketManager.updateAcks();
+		}
+	}
+}
+void ServerPacketManager::connectionRequestPacket(CustomPacket& packet) {
+	RemoteProxy* remote = isPacketFromNewRemoteHost(packet.address, packet.port);
+	if (remote == nullptr) {
+		handleNewClient(packet.address, packet.port);
+	}
+	else {
+		sendConnectionAcceptedTo(remote->id);
+	}
 }
 
-void ServerPacketManager::broadcastName(sf::Uint16 id, sf::String name)
+RemoteProxy* ServerPacketManager::isPacketFromNewRemoteHost(const sf::IpAddress & address, const unsigned short port)
 {
-	CustomPacket packet(0,false);
-	sf::Uint8 code = Common::NAME;
-	packet << code << id << name;
-	socketManager.sendPacket(packet);
+	int i = 0;
+	for (; i < MAX_CONNECTION; i++) {
+		if (clientsConnected[i] && clientsProxy[i].address == address && clientsProxy[i].port == port) {
+			return clientsProxy + i;
+		}
+	}
+	return nullptr;
+}
+
+void ServerPacketManager::handleNewClient(const sf::IpAddress &address, const unsigned short port)
+{
+	RemoteProxy* client = nullptr;
+	int i = -1;
+	i = findFirstEmptySlot();
+	if (i >= 0) {
+		clientsProxy[i].resetProxy(address, port);
+		clientsConnected[i] = true;
+		nbConnectedClients++;
+		clientsProxy[i].connectionSequenceNumber = nextConnectionSequenceNumber++;
+
+		//send connection accepted packet 
+	}
+	//send connection accepted if socketProxy != nullptr
+	//else send connection denied
+	if (client != nullptr) {
+		sendConnectionAcceptedTo(client->id);
+	}
+	else {
+		sendConnectionDeniedTo(address, port);
+	}
+
+}
+
+int ServerPacketManager::findFirstEmptySlot()
+{
+	//iterate throw clientsConenced and find first empty slot
+	if (nbConnectedClients >= MAX_CONNECTION) {
+		return -1;
+	}
+	for (int i = 0; i < MAX_CONNECTION; i++) {
+		if (!clientsConnected[i]) {
+			return i;
+		}
+	}
+	return -1;
+}
+
+void ServerPacketManager::sendConnectionAcceptedTo(const sf::Uint8 clientId)
+{
+	CustomPacket packet;
+	sf::Uint32 protocolId = Common::PROTOCOL_ID;
+	sf::Uint8 packetType = Common::CONNECTION_ACCEPTED;
+	sf::Uint16 connectionSequenceNumber = clientsProxy[clientId].connectionSequenceNumber;
+	packet.packet << protocolId << packetType << connectionSequenceNumber << clientId;
+	packet.address = clientsProxy[clientId].address;
+	packet.port = clientsProxy[clientId].port;
+
+	socketManager.addToSendList(packet);
+	
+}
+
+void ServerPacketManager::sendConnectionDeniedTo(const sf::IpAddress& address, const unsigned short port)
+{
+	CustomPacket packet;
+	sf::Uint32 protocolId = Common::PROTOCOL_ID;
+	sf::Uint8 packetType = Common::CONNECTION_DENIED;
+	packet.packet << protocolId << packetType;
+	packet.address = address;
+	packet.port = port;
+	
+	socketManager.addToSendList(packet);
 }
 
 
+void ServerPacketManager::disconnectionRequestPacket(CustomPacket& packet)
+{
+	Common::PacketDisconnection packetDisconnection;
+	int id;
+	packet.packet >> packetDisconnection;
+	id = packetDisconnection.clientId;
+	if (id >= 0 && id < MAX_CONNECTION) {
+		if (!(clientsProxy[id].address == packet.address && clientsProxy[id].port == packet.port)) {
+			return;
+		}
+		if (!clientsConnected[id]) {
+			return;
+		}
+		if (packetDisconnection.connectionSequenceNumber == clientsProxy[id].connectionSequenceNumber) {
+			broadcastClientDisconnected(id);
+			clientsConnected[id] = false;
+			nbConnectedClients--;
+		}
+	}
+}
 
+void ServerPacketManager::broadcastClientDisconnected(sf::Uint8 clientId)
+{
+	CustomPacket packet;
+	sf::Uint32 protocolId = Common::PROTOCOL_ID;
+	sf::Uint8 packetType = Common::DISCONNECTION_REQUEST;
+	packet.packet << protocolId << packetType << clientId;
+
+	for (int i = 0; i < MAX_CONNECTION; i++) {
+		if (clientsConnected[i]) {
+			packet.address = clientsProxy[i].address;
+			packet.port = clientsProxy[i].port;
+			socketManager.addToSendList(packet);
+		}
+	}
+}
+
+void ServerPacketManager::gameDataPacket(CustomPacket& packet) {
+	Common::PacketReliablilityLayer reliability;
+	int id;
+	packet.packet >> reliability;
+	id = reliability.clientId;
+	if (id >= 0 && id < MAX_CONNECTION) {
+		if (!(clientsProxy[id].address == packet.address && clientsProxy[id].port == packet.port)) {
+			return;
+		}
+		if (!clientsConnected[id]) {
+			return;
+		}
+
+		//process packet number
+		clientsProxy[id].deliveryPacketManager.processIncomingPacketSeqNumber(reliability.packetSequenceNumber);
+		clientsProxy[id].deliveryPacketManager.processIncomingAcks(reliability.lastAck, reliability.ackBits);
+		//process acks
+
+	}
+}

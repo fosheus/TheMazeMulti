@@ -13,6 +13,7 @@
 #include "Maze.h"
 #include "MazeRender.h"
 #include "MoveList.h"
+#include "Timing.h"
 
 #include <string>
 #include <iostream>
@@ -104,7 +105,5 @@ private:
 	std::string pingStr;
 	sf::Clock pingClock;
 
-
-	
 
 };

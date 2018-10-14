@@ -23,14 +23,19 @@
     <ClCompile Include="AssetManager.cpp" />
     <ClCompile Include="ClientSocketManager.cpp" />
     <ClCompile Include="ClientPacketManager.cpp" />
-    <ClCompile Include="CustomPacket.cpp" />
+    <ClCompile Include="Common.cpp" />
+    <ClCompile Include="ConnectionKeeper.cpp" />
+    <ClCompile Include="ConnectionPacket.cpp" />
+    <ClCompile Include="DeliveryPacketManager.cpp" />
     <ClCompile Include="Entity.cpp" />
     <ClCompile Include="EntityModel.cpp" />
     <ClCompile Include="Game.cpp" />
     <ClCompile Include="GameServer.cpp" />
     <ClCompile Include="GameState.cpp" />
     <ClCompile Include="InputManager.cpp" />
+    <ClCompile Include="IServerPacketManager.cpp" />
     <ClCompile Include="JoiningState.cpp" />
+    <ClCompile Include="Level.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="MainMenuState.cpp" />
     <ClCompile Include="Maze.cpp" />
@@ -41,8 +46,10 @@
     <ClCompile Include="RemoteClient.cpp" />
     <ClCompile Include="ServerSocketManager.cpp" />
     <ClCompile Include="ServerPacketManager.cpp" />
+    <ClCompile Include="RemoteProxy.cpp" />
     <ClCompile Include="SplashState.cpp" />
     <ClCompile Include="StateMachine.cpp" />
+    <ClCompile Include="Timing.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="Animation.h" />
@@ -50,8 +57,11 @@
     <ClInclude Include="ClientSocketManager.h" />
     <ClInclude Include="ClientPacketManager.h" />
     <ClInclude Include="Common.h" />
+    <ClInclude Include="ConnectionKeeper.h" />
+    <ClInclude Include="ConnectionPacket.h" />
     <ClInclude Include="CustomPacket.h" />
     <ClInclude Include="DEFINITIONS.h" />
+    <ClInclude Include="DeliveryPacketManager.h" />
     <ClInclude Include="Entity.h" />
     <ClInclude Include="EntityModel.h" />
     <ClInclude Include="Game.h" />
@@ -62,6 +72,7 @@
     <ClInclude Include="IServerCallback.h" />
     <ClInclude Include="IServerPacketManager.h" />
     <ClInclude Include="JoiningState.h" />
+    <ClInclude Include="Level.h" />
     <ClInclude Include="MainMenuState.h" />
     <ClInclude Include="Maze.h" />
     <ClInclude Include="IPacketManager.h" />
@@ -72,9 +83,11 @@
     <ClInclude Include="RemoteClient.h" />
     <ClInclude Include="ServerSocketManager.h" />
     <ClInclude Include="ServerPacketManager.h" />
+    <ClInclude Include="RemoteProxy.h" />
     <ClInclude Include="SplashState.h" />
     <ClInclude Include="State.h" />
     <ClInclude Include="StateMachine.h" />
+    <ClInclude Include="Timing.h" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <ProjectGuid>{74595B24-6288-4924-812C-D130ABC79719}</ProjectGuid>

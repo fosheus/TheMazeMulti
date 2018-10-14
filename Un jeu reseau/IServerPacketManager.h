@@ -7,7 +7,7 @@ class IServerPacketManager :
 public:
 
 	// Hérité via IPacketManager
-	virtual void packetReceived(CustomPacket & packet) override = 0;
+	virtual void packetReceived(CustomPacket & packet,RemoteProxy * remote) override = 0;
 	virtual int handleNewClient() = 0;
 	virtual void clientLostConnection(sf::Uint16 id) = 0;
 	virtual sf::Uint16 getNextClientId() = 0;
@@ -27,6 +27,7 @@ private :
 	virtual void lostConnection() override = 0;
 	virtual sf::Uint16 pingReceived(CustomPacket & packet) override = 0;
 	virtual MoveList moveListReceived(CustomPacket & packet) = 0;
+
 
 };
 

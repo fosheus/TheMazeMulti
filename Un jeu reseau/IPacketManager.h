@@ -4,10 +4,12 @@
 #include "MazeConfig.h"
 #include <vector>
 #include "CustomPacket.h"
+#include "RemoteProxy.h"
+
 class IPacketManager
 {
 public:
-	virtual void packetReceived(CustomPacket & packet) = 0;
+	virtual void packetReceived(CustomPacket & packet,RemoteProxy* remote) = 0;
 	virtual void lostConnection() = 0;
 
 private :

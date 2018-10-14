@@ -1,63 +1,49 @@
 #pragma once
 #include <SFML\Network.hpp>
-#include "Game.h"
-#include "Common.h"
-#include "IServerPacketManager.h"
-#include "RemoteClient.h"
+#include "CustomPacket.h"
 #include <queue>
-#include <unordered_map>
 
+/**
+* Class dedicated to receive and send udp packets
+*/
 class ServerSocketManager
 {
-private:
-
-	const int MAX_TIMEOUT = 20;
-	enum ServerStatus {
-		LOBBY,
-		RUNNING,
-		END
-	};
-
 public:
-	ServerSocketManager(GameDataRef data, IServerPacketManager* packetManager, int port);
+	ServerSocketManager();
 	~ServerSocketManager();
 
-	void startServer();
-	void stopServer();
-	/**
-	sends packet to indicated client, or broadcast if 0
+	/*
+	Starts the server
 	*/
-	void sendPacket(CustomPacket & packet);
+	void bind(unsigned short port);
+	/*
+	Stops the server
+	*/
+	void unbind();
+	
+	/**
+	* Add packet to waiting list
+	*/
+	void addToSendList(CustomPacket & packet);
+	/*
+	Try receiving packets from remote hosts
+	*/
 	void receivePackets();
-	void receiveReliablePackets();
+	/*
+	Returns the received packets queue
+	*/
+	std::queue<CustomPacket>& getReceivedPackets();
+	/*
+	* Iterates throw all waiting packets and determinate if its a broadcast packet
+	* or a packet destinated to one remote host
+	*/
 	void sendWaitingPackets();
 
-	sf::Uint32 getPacketCounter();
-
-
-
-private :
-
-	bool handleTcpSocket(sf::Uint16 id, sf::TcpSocket* socket);
-	void sendUdpPacket(CustomPacket & packet);
-	void sendTcpPacket(CustomPacket & packet);
-	void broadcastUdpPacket(CustomPacket & packet);
-	void broadcastTcpPacket(CustomPacket & packet);
-
 private:
-	GameDataRef _data;
-
-	unsigned short port;
-	IServerPacketManager* packetManager;
-	sf::TcpListener listener;
 	sf::UdpSocket udpListener;
 	std::queue<CustomPacket> packetsToSend;
-	std::map<sf::Uint16, sf::TcpSocket*> tcpClients;
-	std::unordered_map<sf::Uint16, RemoteClient> udpClients;
-	std::map <sf::IpAddress, sf::Uint16> ipAddressIdMap;
-	
-	bool started;
-	sf::Uint32 packetCounter;
+	std::queue<CustomPacket> receivedPackets;
+
 
 };
 

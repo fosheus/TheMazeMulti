@@ -1,19 +1,11 @@
 #pragma once
 #include <SFML/Network.hpp>
-class CustomPacket : public sf::Packet
+struct CustomPacket
 {
-public:
-	CustomPacket();
-	CustomPacket(sf::Uint16 id,bool sendAsDatagram);
-	sf::Uint16 getId();
-	bool getSendAsDatagram();
-	void setId(sf::Uint16 id);
-	void setSetAsDatagram(bool sendAsDatagram);
-	~CustomPacket();
-
-private :
-	sf::Uint16 id;
-	bool sendAsDatagram;
-
+public :
+	sf::IpAddress address;
+	unsigned short port;
+	sf::Packet packet;
+	
 };
 

@@ -2,6 +2,7 @@
 #include "DEFINITIONS.h"
 #include "MainMenuState.h"
 #include "Common.h"
+#include "Timing.h"
 
 
 
@@ -26,6 +27,7 @@ GameState::GameState(GameDataRef data,sf::String address,sf::String pseudo,bool 
 	sendTimeout = 0;
 	pingDt = 0;
 	identifier = 0;
+	
 	
 	
 }
@@ -124,7 +126,7 @@ void GameState::Update(float dt)
 			sendTimeout = 0.0f;
 		}
 	}
-
+	pingTxt.setString(std::to_string(Timing::getCurrentTimestamp()));
 }
 
 void GameState::Draw(float dt)
@@ -159,7 +161,6 @@ void GameState::Draw(float dt)
 		}
 		
 	}
-	pingTxt.setString(std::to_string(pingDt));
 	_data->window.draw(pingTxt);
 
 

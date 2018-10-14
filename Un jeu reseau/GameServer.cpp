@@ -77,7 +77,7 @@ bool GameServer::newGame(sf::Uint16 id)
 			packetManager.broadcastEntityModel(*it->second);
 		}
 		MazeConfig config(seed, width, height);
-		packetManager.sendSeedDimension(config);
+		packetManager.broadcastSeedAndDimensions(config);
 		
 		return true;
 	}
@@ -134,8 +134,7 @@ void GameServer::serverWork()
 	float sendTimeout = 0;
 	float broadcastTimeout = 0;
 	while (started) {
-		dt = clock.getElapsedTime().asSeconds();
-		clock.restart();
+		dt = clock.restart().asSeconds;
 		sendTimeout += dt;
 		broadcastTimeout += dt;
 		packetManager.receiveData();
