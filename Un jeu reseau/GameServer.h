@@ -1,9 +1,10 @@
 #pragma once
-#include "ServerPacketManager.h"
-#include "IServerCallback.h"
 #include "Maze.h"
+#include <yojimbo.h>
+#include "shared.h"
+#include "EntityModel.h"
 
-class GameServer :public IServerCallback
+class GameServer 
 {
 public:
 	GameServer(GameDataRef data,int port );
@@ -13,42 +14,39 @@ public:
 	void stopServer();
 	void update(float dt);
 
+	void clientConnected(int clientIndex);
+	void clientDisconnected(int clientIndex);
+
 private:
-	// Hérité via IServerCallback
-	virtual EntityModel* newClientConnected() override;
-	virtual bool entityModel(EntityModel & em) override;
-	virtual bool removeClient(sf::Uint16 id) override;
-	virtual bool newGame(sf::Uint16 id) override;
-	virtual bool levelGenerated(sf::Uint16 id) override;
-	virtual EntityModel* getEntityModelById(sf::Uint16 id) override;
-	// Hérité via IServerCallback
-	virtual sf::Uint16 getNextEntityId() override;
-	virtual std::map<sf::Uint16, EntityModel*> getAllEntities() override;
-	// Hérité via IServerCallback
-	virtual void levelCompleted(sf::Uint16 id) override;
-	// Hérité via IServerCallback
-	virtual void changeClientName(std::pair<sf::Uint16, sf::String> name) override;
+	void run();
+	void processMessages();
+	void processMessage(int clientIndex, yojimbo::Message* message);
+	void processMoveMessage(int clientIndex, MoveMessage* message);
 
 
-	// Hérité via IServerCallback
-	virtual void updateFromMoveList(MoveList & moveList) override;
-
-
-	void serverWork();
 	bool collisionManagement(EntityModel* e);
 	void managePlayerWin(EntityModel * e);
+
+	void broadcastPlayerWon(int clientIndex);
+
 	
 private :
 	GameDataRef _data;
 	sf::Thread threadServer;
+
+	bool started;
+
+	yojimbo::Server server;
+	yojimbo::Address endpoint;
+	yojimbo::GameConnectionConfig connectionConfig;
+	GameAdapter adapter;
+
 	sf::Clock clock;
-	ServerPacketManager packetManager;
-	std::map<sf::Uint16, EntityModel*> entities;
-	int indexNextClient;
 
 	Maze maze;
 	int level;
-	bool started;
+	EntityModel players[MAX_PLAYERS];
+
 
 
 	

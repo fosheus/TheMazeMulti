@@ -1,7 +1,9 @@
 #pragma once
 #include <SFML\Graphics.hpp>
 #include <SFML\Network.hpp>
+#include <yojimbo.h>
 
+#include "shared.h"
 #include "Game.h"
 #include "State.h"
 #include "DEFINITIONS.h"
@@ -55,12 +57,14 @@ public:
 
 
 private :
-	
+	void processMessages();
+	void processMessage(yojimbo::Message* message);
+	void processLevelStateMessage(LevelStateMessage* message);
+
 	void closeAll();
 private :
 	enum State {
-		NO_STATE,
-		ACCEPTED,
+		DISCONNECTED,
 		CONNECTED,
 	};
 
@@ -68,14 +72,23 @@ private:
 	GameDataRef _data;
 
 	GameServer* server;
-	ClientPacketManager* packetManager;
-	sf::IpAddress address;
+
+	yojimbo::Client client;
+	yojimbo::Address endpoint;
+	GameConnectionConfig connectionConfig;
+	GameAdapter adapter;
+
 	MoveList moveList;
 
+	GameState::State currentState;
+	int clientIndex;
 	Maze maze;
 	MazeRender mazeRender;
+	Entity* offlinePlayer;
+	Entity* players[MAX_PLAYERS];
+	bool slostUsed[MAX_PLAYERS];
+
 	sf::Clock _clock;
-	sf::Clock clockSendTimeout;
 	float sendTimeout;
 
 	sf::Sprite _background;
@@ -88,7 +101,6 @@ private:
 
 	sf::String pseudo;
 	sf::Uint16 identifier;
-	std::map<sf::Uint16, Entity*> mapIdEntities;
 
 	sf::Text score;
 	sf::Font basicFont;
@@ -103,8 +115,9 @@ private:
 	float pingDt;
 	std::string pingStr;
 	sf::Clock pingClock;
+	sf::Uint32 moveId;
 
 
-	
+
 
 };

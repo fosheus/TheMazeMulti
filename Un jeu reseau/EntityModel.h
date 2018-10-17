@@ -1,7 +1,8 @@
 #pragma once
 #include <SFML\Network.hpp>
 #include "Move.h"
-class EntityModel
+#include <yojimbo.h>
+class EntityModel : public yojimbo::Serializable
 {
 public:
 	EntityModel(sf::Uint16 id,float x,float y,sf::Uint16 score,sf::Uint32 lastMoveId);
@@ -21,19 +22,27 @@ public:
 	void updateFromMove(const Move& move);
 	void rollbackMove(const Move& move);
 
+	template <typename Stream> bool Serialize(Stream & stream) {
+		
+		serialize_int(stream, id, 0, 64);
+		serialize_float(stream, x);
+		serialize_float(stream, y);
+		serialize_bits(stream, score,32);
+		serialize_bits(stream, lastMoveId,32);
+		return true;
+	}
+
+	YOJIMBO_VIRTUAL_SERIALIZE_FUNCTIONS();
+
 	~EntityModel();
 
 private :
 	float x;
 	float y;
-	sf::Uint16 id;
+	int id;
 	sf::String name;
 	sf::Uint16 score;
 	sf::Uint32 lastMoveId;
 };
 
 
-
-sf::Packet& operator << (sf::Packet& packet, const EntityModel& em);
-
-sf::Packet& operator >> (sf::Packet& packet, EntityModel& em);
