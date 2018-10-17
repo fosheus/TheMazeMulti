@@ -1,61 +1,123 @@
 #include "GameServer.h"
 
-GameServer::GameServer(GameDataRef data, int port): _data(data),packetManager(data,this,port),maze(data), threadServer(&GameServer::serverWork,this)
+GameServer::GameServer(GameDataRef data, int port): _data(data),maze(data), threadServer(&GameServer::run,this),
+	endpoint("127.0.0.1",port),
+	server(yojimbo::GetDefaultAllocator(),DEFAULT_PRIVATE_KEY,endpoint,connectionConfig,adapter,0.0f)
 {
-	indexNextClient = 1;
+	server.Start(MAX_PLAYERS);
+	if (!server.IsRunning()) {
+		throw std::runtime_error("Could not start server at port " + std::to_string(this->endpoint.GetPort()));
+	}
 }
 
 GameServer::~GameServer()
 {
 }
 
-EntityModel* GameServer::newClientConnected()
+void GameServer::run()
 {
-	entities[indexNextClient] = new EntityModel(indexNextClient, 0, 0,0,0);
-	indexNextClient++;
-	return entities[indexNextClient-1];
+	float dt=0.0f;
+	float fixedDt = 2.0f / 60.0f;
+	float accumulator=0.0f;
+	while (started) {
+		dt = clock.restart().asSeconds();
+		accumulator += dt;
+		if (accumulator >= fixedDt) {
+			update(dt);
+			accumulator = 0;
+		}
+	}
 }
 
-bool GameServer::entityModel(EntityModel & em)
+void GameServer::update(float dt)
 {
-	float deltaX, deltaY;
-	if (entities[em.getId()] != nullptr) {
-		
-		if (maze.getGenerated()) {
-			int x = (int)em.getX();
-			int y = (int)em.getY();
-			if (x >= 0 || x < maze.getWidth() && y >= 0 && y < maze.getHeight()) {
-				if (maze.getMaze()[x][y] != 0) {
-					entities[em.getId()]->setX(em.getX());
-					entities[em.getId()]->setY(em.getY());
-				}
-				sf::Vector2f pos = maze.getExitPos();
-				if (x == pos.x && y == pos.y) {
-					entities[em.getId()]->setScore(em.getScore() + 1);
-					packetManager.broadcastLevelCompleted(em.getId());
-					level++;
-					maze.clearMaze();
+	if (!server.IsRunning()) {
+		started = false;
+		return;
+	}
+
+	server.AdvanceTime(dt);
+	server.ReceivePackets();
+	processMessages();
+
+	sendLevel();
+
+	server.SendPackets();
+}
+
+void GameServer::processMessages()
+{
+	for (int i = 0; i < MAX_PLAYERS; i++) {
+		if (server.IsClientConnected(i)) {
+			for (int j = 0; i < connectionConfig.numChannels; j++) {
+				yojimbo::Message* message = server.ReceiveMessage(i, j);
+				while (message != NULL) {
+					processMessage(i, message);
+					server.ReleaseMessage(i, message);
+					message = server.ReceiveMessage(i, j);
 				}
 			}
 		}
-		else {
-			entities[em.getId()]->setX(em.getX());
-			entities[em.getId()]->setY(em.getY());
-		}
-		
-		packetManager.broadcastEntityModel(*entities[em.getId()]);
-		return true;
 	}
-	return false;
-
 }
 
-bool GameServer::removeClient(sf::Uint16 id)
+void GameServer::processMessage(int clientIndex, Message * message)
 {
-	
-	entities.erase(id);
-	return true;
+	switch (message->GetType())
+	{
+	case (int)GameMessageType::MOVE_MESSAGE:
+		processMoveMessage(clientIndex,(MoveMessage*) message);
+		break;
+	default:
+		break;
+	}
 }
+
+void GameServer::processMoveMessage(int clientIndex, MoveMessage* message)
+{
+	MoveMessage* moveMessage = (MoveMessage*)message;
+	EntityModel *e = level.getPlayerByIndex(clientIndex);
+	Move m(moveMessage->deltaX, moveMessage->deltaY, moveMessage->moveId);
+
+	if (moveMessage->moveId > e->getLastMoveId()) {
+		e->setLastMoveId(moveMessage->moveId);
+		e->updateFromMove(m);
+		managePlayerWin(e);
+		if (collisionManagement(e)) {
+			e->rollbackMove(m);
+		}
+
+	}
+}
+
+void GameServer::sendLevel()
+{
+	std::vector<EntityModel> playerModels = level.getPlayers();
+	for (int i = 0; i < playerModels.size(); i++) {
+		LevelStateMessage* message = (LevelStateMessage*)server.CreateMessage(playerModels[i].getId(), GameMessageType::LEVEL_STATE_MESSAGE);
+		message->level = level;
+		server.SendMessage(playerModels[i].getId(),(int)GameChannel::UNRELIABLE,message);
+
+	}
+}
+
+
+void GameServer::startServer()
+{
+	started = true;
+	threadServer.launch();
+}
+
+void GameServer::stopServer()
+{
+	server.DisconnectAllClients();
+	started = false;
+	threadServer.wait();
+	server.Stop();
+
+}
+
+/*
 
 bool GameServer::newGame(sf::Uint16 id)
 {
@@ -94,24 +156,16 @@ EntityModel* GameServer::getEntityModelById(sf::Uint16 id)
 	return entities[id];
 }
 
-void GameServer::startServer()
+
+
+
+void GameServer::clientConnected(int clientIndex)
 {
-	started = true;
-	packetManager.startServer();
-	threadServer.launch();
+	entities[indexNextClient] = new EntityModel(clientIndex, 0, 0, 0, 0);
 }
 
-void GameServer::stopServer()
+void GameServer::clientDisconnected(int clientIndex)
 {
-	packetManager.stopServer();
-	started = false;
-	threadServer.wait();
-
-}
-
-void GameServer::update(float dt)
-{
-	packetManager.handleClients();
 }
 
 sf::Uint16 GameServer::getNextEntityId()
@@ -127,26 +181,7 @@ std::map<sf::Uint16, EntityModel*> GameServer::getAllEntities()
 void GameServer::levelCompleted(sf::Uint16 id)
 {
 }
-
-void GameServer::serverWork()
-{
-	float dt;
-	float sendTimeout = 0;
-	float broadcastTimeout = 0;
-	while (started) {
-		dt = clock.restart().asSeconds;
-		sendTimeout += dt;
-		broadcastTimeout += dt;
-		packetManager.receiveData();
-
-		if (sendTimeout > 4.0f/60.0f) {
-			packetManager.sendWaitingData();
-			sendTimeout = 0;
-		}
-		
-
-	}
-}
+*/
 
 bool GameServer::collisionManagement(EntityModel * e)
 {
@@ -177,13 +212,33 @@ void GameServer::managePlayerWin(EntityModel * e)
 		int y = e->getY();
 		if (x == exit.x && y == exit.y) {
 			maze.clearMaze();
-			packetManager.broadcastLevelCompleted(e->getId());
-			level++;
+			broadcastPlayerWon(e->getId());
+			levelNbr++;
 			e->setScore(e->getScore() + 1);
 		}
 	}
 }
 
+void GameServer::broadcastPlayerWon(int clientIndex)
+{
+	for (int i = 0; i < MAX_PLAYERS; i++) {
+		if (server.IsClientConnected(i)) {
+			PlayerWonMessage* message = (PlayerWonMessage*)server.CreateMessage(i, PLAYER_WON_MESSAGE);
+			message->playerIndex = clientIndex;
+			server.SendMessage(i, (int)GameChannel::RELIABLE,message);
+		}
+	}
+}
+void GameServer::clientConnection(int clientIndex)
+{
+	level.newPlayer(EntityModel(clientIndex));
+}
+void GameServer::clientDisconnection(int clientIndex)
+{
+	delete level.getPlayerByIndex(clientIndex);
+	level.getPlayerByIndex(clientIndex);
+}
+/*
 void GameServer::changeClientName(std::pair<sf::Uint16,sf::String> name)
 {
 	std::map<sf::Uint16, EntityModel*>::iterator it;
@@ -214,3 +269,4 @@ void GameServer::updateFromMoveList(MoveList & moveList)
 		packetManager.broadcastEntityModel(*e);
 	}
 }
+*/

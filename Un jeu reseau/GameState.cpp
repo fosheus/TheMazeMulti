@@ -1,33 +1,34 @@
 #include "GameState.h"
-#include "DEFINITIONS.h"
-#include "MainMenuState.h"
-#include "Common.h"
-#include "Timing.h"
 
 
+using namespace yojimbo;
 
-GameState::GameState(GameDataRef data,sf::String address,sf::String pseudo,bool local) :_data(data),maze(data),mazeRender(data),moveList(0)
+GameState::GameState(GameDataRef data,sf::String address,sf::String pseudo,bool local) :_data(data),maze(data),mazeRender(data),moveList(0),adapter(),
+	client(yojimbo::GetDefaultAllocator(),yojimbo::Address("0.0.0.0"),connectionConfig,adapter,0.0f)
 {
 	
+	uint64_t clientId;
+	yojimbo::random_bytes((uint8_t*)&clientId, 8);
+	
 	if (!local) {
-		this->address =  address.toAnsiString();
 		this->_data->window.setTitle("CLIENT");
 		std::cout << "CLIENT" << std::endl;
 	}
 	else {
-		server = new GameServer(data, LISTEN_PORT);
-		
-		this->address = "127.0.0.1";
+		server = new GameServer(data, ServerPort);
 		this->_data->window.setTitle("SERVER");
 		std::cout << "SERVER" << std::endl;
 	}
 	this->pseudo = pseudo;
-	packetManager = new ClientPacketManager(_data,this,address,LISTEN_PORT);
 	identified = false;
 	sendTimeout = 0;
 	pingDt = 0;
 	identifier = 0;
-	
+	uint8_t privateKey[yojimbo::KeyBytes];
+	memset(privateKey, 0, yojimbo::KeyBytes);
+	this->endpoint = Address(address.toAnsiString().c_str(),ServerPort);
+	client.InsecureConnect(privateKey, clientId,endpoint);
+	currentState = State::DISCONNECTED;
 	
 	
 }
@@ -44,15 +45,17 @@ void GameState::Init()
 	if (server != nullptr) {
 		server->startServer();
 	}
-	if (!packetManager->connect()) {
-		std::cout << "No connection is possible" << std::endl;	
-	}
+
 	deltaX = 0;
 	deltaY = 0;
 	score.setFont(_data->assets.GetFont(BASIC_FONT));
 	score.setFillColor(sf::Color::Black);
 	pingTxt.setFont(_data->assets.GetFont(BASIC_FONT));
 	pingTxt.setFillColor(sf::Color::Black);
+
+	offlinePlayer = new Entity(0, 0, 0, this->pseudo);
+	offlinePlayer->getSprite().setFillColor(sf::Color::Green);
+	moveId = 0;
 
 }
 
@@ -94,44 +97,67 @@ void GameState::HandleInput()
 		deltaY -= 200;
 	}
 	if (sf::Keyboard::isKeyPressed(sf::Keyboard::P)) {
-		packetManager->startGame(identifier);
+
 	}
 }
 
 void GameState::Update(float dt)
 {
-	std::map<sf::Uint16, Entity*>::iterator it;
+	Entity * e = NULL;
 	sendTimeout += dt;
-	packetManager->receivePackets(identifier);
-	if (identified) {
-		if (updated) {
-			moveList.addMove(deltaX*dt / (TEXTURE_SIZE*scale), deltaY*dt / (TEXTURE_SIZE*scale));
-			Entity * e = mapIdEntities[identifier];
-			if (e->getX() + deltaX * dt > 0 && e->getX() + deltaX * dt < _data->window.getSize().x) {
-				mapIdEntities[identifier]->move(deltaX, 0, dt);
+
+	client.AdvanceTime(dt);
+	client.ReceivePackets();
+	if (!client.IsConnected()) {
+		e = offlinePlayer;
+		if (currentState == State::CONNECTED) {
+			//we just get disconnected so we swap the current player entity to the offline entity
+			players[clientIndex] = NULL;
+			for (int i = 0; i < MAX_PLAYERS; i++) {
+				delete players[i];
 			}
-			if (e->getY() + deltaY * dt > 0 && e->getY() + deltaY * dt < _data->window.getSize().y) {
-				mapIdEntities[identifier]->move(0, deltaY, dt);
-			}
-			updated = false;
-		}
-		for (it = mapIdEntities.begin(); it != mapIdEntities.end(); it++) {
-			it->second->interpolation(dt);
-		}
-		if (sendTimeout > 4.0f / 60.0f) {
-			if (moveList.getMoveListSize() > 0) {
-				packetManager->sendMoveList(moveList, identifier);
-				packetManager->sendWaitingPackets();
-			}
-			sendTimeout = 0.0f;
+			currentState = DISCONNECTED;
 		}
 	}
-	pingTxt.setString(std::to_string(Timing::getCurrentTimestamp()));
+	else {
+		if (currentState == DISCONNECTED) {
+			clientIndex = client.GetClientIndex();
+			//we just connected, we swap 
+			players[clientIndex] = offlinePlayer;
+			currentState = CONNECTED;
+			
+		}
+		processMessages();
+		e = players[clientIndex];
+	}
+
+	if (updated) {
+		moveList.addMove(deltaX*dt / (TEXTURE_SIZE*scale), deltaY*dt / (TEXTURE_SIZE*scale));
+		if (e->getX() + deltaX * dt > 0 && e->getX() + deltaX * dt < _data->window.getSize().x) {
+			e->move(deltaX, 0, dt);
+		}
+		if (e->getY() + deltaY * dt > 0 && e->getY() + deltaY * dt < _data->window.getSize().y) {
+			e->move(0, deltaY, dt);
+		}
+		MoveMessage* message = (MoveMessage*)client.CreateMessage((int)GameMessageType::MOVE_MESSAGE);
+		message->deltaX = deltaX * dt;
+		message->deltaY = deltaY * dt;
+		message->moveId = moveId++;
+		client.SendMessage((int)GameChannel::UNRELIABLE,message);
+		updated = false;
+	}
+	for (int i = 0; i < MAX_PLAYERS;i++) {
+		players[i]->interpolation(dt);
+	}
+
+	if (sendTimeout > 2.0f / 60.0f) {
+		client.SendPackets();
+		sendTimeout = 0.0f;
+	}
 }
 
 void GameState::Draw(float dt)
 {
-	std::map<sf::Uint16, Entity*>::iterator it;
 	//CLEAR AND SET WINDOW//
 
 	this->_data->window.clear(sf::Color(0x33,0x66,0xff));
@@ -142,25 +168,33 @@ void GameState::Draw(float dt)
 		//maze.draw(_data->window,scale);
 		_data->window.draw(mazeRender);
 	}
-	int i = 0;
 
-	if (identified) {
-		for (it = mapIdEntities.begin(); it != mapIdEntities.end(); it++) {
-			sf::CircleShape oui;
-			oui.setPosition(it->second->getX(), it->second->getY());
-			oui.setRadius(30);
-			oui.setOrigin(30, 30);
-			oui.setFillColor(sf::Color::Transparent);
-			oui.setOutlineThickness(1);
-			oui.setOutlineColor(sf::Color::Black);
-			//this->_data->window.draw(oui);
-			this->_data->window.draw(*it->second);
-			score.setPosition(_data->window.getSize().x / 5 * 4, _data->window.getSize().y / 5 + 50 * i++);
-			score.setString(it->second->getName().toAnsiString() + " : " + std::to_string(it->second->getScore()));
-			_data->window.draw(score);
+	if (currentState == State::CONNECTED) {
+		for (int i = 0; i < MAX_PLAYERS; i++) {
+			if (players[i] != NULL) {
+				sf::CircleShape oui;
+				oui.setPosition(players[i]->getX(), players[i]->getY());
+				oui.setRadius(30);
+				oui.setOrigin(30, 30);
+				oui.setFillColor(sf::Color::Transparent);
+				oui.setOutlineThickness(1);
+				oui.setOutlineColor(sf::Color::Black);
+				//this->_data->window.draw(oui);
+				this->_data->window.draw(*players[i]);
+				score.setPosition(_data->window.getSize().x / 5 * 4, _data->window.getSize().y / 5 + 50 * i++);
+				score.setString(players[i]->getName().toAnsiString() + " : " + std::to_string(players[i]->getScore()));
+				_data->window.draw(score);
+			}
 		}
-		
 	}
+	else {
+		this->_data->window.draw(*offlinePlayer);
+		score.setPosition(_data->window.getSize().x / 5 * 4, _data->window.getSize().y / 5);
+		score.setString(offlinePlayer->getName().toAnsiString() + " : " + std::to_string(offlinePlayer->getScore()));
+		_data->window.draw(score);
+	}
+		
+	pingTxt.setString(std::to_string(pingDt));
 	_data->window.draw(pingTxt);
 
 
@@ -169,51 +203,49 @@ void GameState::Draw(float dt)
 }
 
 
-void GameState::closeAll()
+void GameState::processMessages()
 {
-	packetManager->disconnect();
-	if (server != nullptr) {
-		server->stopServer();
-		delete server;
-		server = nullptr;
+	for (int i = 0; i < connectionConfig.numChannels; i++) {
+		Message* message = client.ReceiveMessage(i);
+		while (message != NULL) {
+			processMessage(message);
+			client.ReleaseMessage(message);
+			message = client.ReceiveMessage(i);
+		}
 	}
 }
 
-
-void GameState::updateEntityName(std::pair<sf::Uint16, sf::String> nameIdPair)
+void GameState::processMessage(yojimbo::Message * message)
 {
-	mapIdEntities[nameIdPair.first]->setName(nameIdPair.second);
+	switch (message->GetType())
+	{
+	case GameMessageType::LEVEL_STATE_MESSAGE: 
+		processLevelStateMessage((LevelStateMessage*)message);
+		break;
+	case GameMessageType::PLAYER_WON_MESSAGE:
+		break;
+	default:
+		break;
+	}
 }
 
-void GameState::ping()
+void GameState::processLevelStateMessage(LevelStateMessage * message)
 {
-	pingDt = pingClock.getElapsedTime().asMilliseconds();
-}
+	std::vector<EntityModel> playersModel = message->level.getPlayers();
 
-void GameState::welcomed(sf::Uint16 identifier)
-{
-	this->identifier = identifier;
-	identified = true;
-	packetManager->sendName(identifier, this->pseudo);
-	mapIdEntities[identifier] = new Entity(identifier, 0,0);
-	mapIdEntities[identifier]->getSprite().setFillColor(sf::Color(54,188,107));
-	moveList = MoveList(identifier);
-
-}
-
-void GameState::updateEntityModel(std::vector<EntityModel>& em)
-{
-
-	for (size_t i = 0; i < em.size(); i++) {
-		if (mapIdEntities[em[i].getId()] == nullptr) {
-			mapIdEntities[em[i].getId()] = new Entity(em[i].getId(), em[i].getX(), em[i].getY());
+	for (size_t i = 0; i < playersModel.size(); i++) {
+		
+		EntityModel currentPlayer = playersModel[i];
+		int index = currentPlayer.getId();
+		if (players[index] == nullptr) {
+			players[index] = new Entity(currentPlayer.getId(), currentPlayer.getX(), currentPlayer.getY());
 		}
 		else {
-			Entity* e = mapIdEntities[em[i].getId()];
-			e->updateFromModel(em[i], scale*TEXTURE_SIZE);
+			Entity* e =players[index];
+			e->updateFromModel(currentPlayer, scale*TEXTURE_SIZE);
 			if (e->getId() == identifier && moveList.getMoveListSize() > 0) {
 				Move m = moveList.getOldestMove();
-				while (m.getMoveId() < em[i].getLastMoveId()) {
+				while (m.getMoveId() < currentPlayer.getLastMoveId()) {
 					moveList.removeOldestMove();
 					if (moveList.getMoveListSize() > 0) {
 						m = moveList.getOldestMove();
@@ -225,23 +257,30 @@ void GameState::updateEntityModel(std::vector<EntityModel>& em)
 			}
 		}
 	}
+
+	//remove old players;
 }
 
-void GameState::lostConnection()
+void GameState::closeAll()
 {
-	closeAll();
-	std::cout << "Connection lost" << std::endl;
-	this->_data->machine.AddState(StateRef(new MainMenuState(this->_data)), true);
+	client.Disconnect();
+	if (server != nullptr) {
+		server->stopServer();
+		delete server;
+		server = nullptr;
+	}
 }
 
+
+/*
 void GameState::removeEntity(sf::Uint16 id)
 {
-	delete mapIdEntities[id];
-	mapIdEntities.erase(id);
+	delete players[id];
 }
 
 void GameState::generateLevel(MazeConfig config)
 {
+	
 	std::map<sf::Uint16, Entity*>::iterator it;
 	maze.generateMaze(config.getSeed(), config.getWidth(), config.getHeight());
 	scale = baseMazeSize / (float)config.getWidth();
@@ -250,20 +289,18 @@ void GameState::generateLevel(MazeConfig config)
 	}
 	maze.optimizeMazeForRendering();
 	mazeRender.load(maze, sf::Vector2u(50, 50),scale);
-}
-
-void GameState::startGame()
-{
+	
 }
 
 void GameState::levelCompleted(sf::Uint16 id)
 {
+	/*
 	std::map<sf::Uint16, Entity*>::iterator it;
 	maze.clearMaze();
 	for (it = mapIdEntities.begin(); it != mapIdEntities.end(); it++) {
 		mapIdEntities[it->first]->setRadius(bazeRadius);
 	}
 }
-
+*/
 
 

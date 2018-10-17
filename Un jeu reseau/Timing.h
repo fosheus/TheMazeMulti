@@ -15,4 +15,4 @@ private:
 	sf::Clock clock;
 
 };
-Timing* Timing::_instance = nullptr;
+

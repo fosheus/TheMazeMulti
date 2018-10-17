@@ -1,27 +1,28 @@
 #pragma once
 #include <SFML\Graphics.hpp>
 #include <SFML\Network.hpp>
+#include <yojimbo.h>
 
+#include "shared.h"
 #include "Game.h"
 #include "State.h"
 #include "DEFINITIONS.h"
 #include "GameServer.h"
-#include "Common.h"
 #include "Entity.h"
-#include "IClientCallback.h"
-#include "ClientPacketManager.h"
 #include "Maze.h"
 #include "MazeRender.h"
 #include "MoveList.h"
 #include "Timing.h"
-
+#include "MainMenuState.h"
 #include <string>
 #include <iostream>
 #include <string>
 #include <queue>
 
 
-class GameState : public State, public IClientCallback
+using namespace yojimbo;
+
+class GameState : public State
 {
 
 public:
@@ -34,34 +35,15 @@ public:
 	void Draw(float dt);
 
 
-	// Hérité via IClientCallback
-	virtual void welcomed(sf::Uint16 identifier) override;
-
-	virtual void updateEntityModel(std::vector<EntityModel>& em) override;
-
-	virtual void lostConnection() override;
-
-	virtual void removeEntity(sf::Uint16 id) override;
-
-	virtual void generateLevel(MazeConfig config) override;
-
-	virtual void startGame() override;
-
-	virtual void levelCompleted(sf::Uint16 id) override;
-
-	virtual void updateEntityName(std::pair<sf::Uint16, sf::String> nameIdPair) override;
-
-	virtual void ping() override;
-
-
-
 private :
-	
+	void processMessages();
+	void processMessage(yojimbo::Message* message);
+	void processLevelStateMessage(LevelStateMessage* message);
+
 	void closeAll();
 private :
 	enum State {
-		NO_STATE,
-		ACCEPTED,
+		DISCONNECTED,
 		CONNECTED,
 	};
 
@@ -69,14 +51,23 @@ private:
 	GameDataRef _data;
 
 	GameServer* server;
-	ClientPacketManager* packetManager;
-	sf::IpAddress address;
+
+	yojimbo::Client client;
+	yojimbo::Address endpoint;
+	GameConnectionConfig connectionConfig;
+	GameAdapter adapter;
+
 	MoveList moveList;
 
+	GameState::State currentState;
+	int clientIndex;
 	Maze maze;
 	MazeRender mazeRender;
+	Entity* offlinePlayer;
+	Entity* players[MAX_PLAYERS];
+	bool slostUsed[MAX_PLAYERS];
+
 	sf::Clock _clock;
-	sf::Clock clockSendTimeout;
 	float sendTimeout;
 
 	sf::Sprite _background;
@@ -89,7 +80,6 @@ private:
 
 	sf::String pseudo;
 	sf::Uint16 identifier;
-	std::map<sf::Uint16, Entity*> mapIdEntities;
 
 	sf::Text score;
 	sf::Font basicFont;
@@ -104,6 +94,6 @@ private:
 	float pingDt;
 	std::string pingStr;
 	sf::Clock pingClock;
-
+	sf::Uint32 moveId;
 
 };

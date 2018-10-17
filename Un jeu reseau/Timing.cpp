@@ -1,5 +1,4 @@
 #include "Timing.h"
-#include <time.h>
 
 Timing::Timing()
 {
@@ -23,5 +22,8 @@ Timing * Timing::getInstance()
 	}
 	return _instance;
 }
+
+Timing* Timing::_instance = nullptr;
+
 
 

@@ -1,6 +1,7 @@
 #pragma once
 #include <SFML\Graphics.hpp>
 #include "EntityModel.h"
+
 class Entity : public sf::Drawable
 {
 public:

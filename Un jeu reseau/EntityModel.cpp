@@ -11,6 +11,15 @@ EntityModel::EntityModel(sf::Uint16 id,float x,float y,sf::Uint16 score,sf::Uint
 
 
 
+EntityModel::EntityModel(int id)
+{
+	this->id = id;
+	this->x = 0;
+	this->y = 0;
+	this->score = 0;
+	this->lastMoveId = 0;
+}
+
 void EntityModel::setId(sf::Uint16 id)
 {
 	this->id = id;
@@ -76,6 +85,7 @@ void EntityModel::updateFromMove(const Move & move)
 {
 	this->x += move.getDeltaX();
 	this->y += move.getDeltaY();
+	this->lastMoveId = move.getMoveId();
 }
 
 void EntityModel::rollbackMove(const Move & move)

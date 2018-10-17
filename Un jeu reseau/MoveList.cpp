@@ -53,32 +53,3 @@ int MoveList::getMoveListSize() const
 MoveList::~MoveList()
 {
 }
-
-sf::Packet & operator<<(sf::Packet & packet, const MoveList & ml)
-{
-	std::list<Move>::const_iterator it = ml.getMoveListBeginIterator();
-	sf::Uint16 size = ml.getMoveListSize();
-	packet << ml.getClientId();
-	packet << size;
-	while (it != ml.getMoveListEndIterator()) {
-		packet << *it;
-		it++;
-	}
-	return packet;
-
-}
-
-sf::Packet & operator>>(sf::Packet & packet, MoveList & ml)
-{
-	sf::Uint16 size;
-	Move move;
-	sf::Uint16 id;
-	packet >> id;
-	ml.setClientId(id);
-	packet >> size;
-	for (int i = 0; i < size; i++) {
-		packet >> move;
-		ml.addMove(move);
-	}
-	return packet;
-}
