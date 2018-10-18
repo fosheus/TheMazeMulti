@@ -1,17 +1,14 @@
 #include "GameServer.h"
 
-GameServer::GameServer(GameDataRef data, int port): _data(data),maze(data), threadServer(&GameServer::run,this),
-	endpoint("127.0.0.1",port),
-	server(yojimbo::GetDefaultAllocator(),DEFAULT_PRIVATE_KEY,endpoint,connectionConfig,adapter,0.0f)
+GameServer::GameServer(GameDataRef data): _data(data),maze(data), threadServer(&GameServer::run,this), m_adapter(this),
+	server(yojimbo::GetDefaultAllocator(),DEFAULT_PRIVATE_KEY,Address("127.0.0.1",ServerPort),m_connectionConfig,m_adapter,0.0f)
 {
-	server.Start(MAX_PLAYERS);
-	if (!server.IsRunning()) {
-		throw std::runtime_error("Could not start server at port " + std::to_string(this->endpoint.GetPort()));
-	}
+	
 }
 
 GameServer::~GameServer()
 {
+	server.Stop();
 }
 
 void GameServer::run()
@@ -49,7 +46,7 @@ void GameServer::processMessages()
 {
 	for (int i = 0; i < MAX_PLAYERS; i++) {
 		if (server.IsClientConnected(i)) {
-			for (int j = 0; i < connectionConfig.numChannels; j++) {
+			for (int j = 0; i < m_connectionConfig.numChannels; j++) {
 				yojimbo::Message* message = server.ReceiveMessage(i, j);
 				while (message != NULL) {
 					processMessage(i, message);
@@ -94,7 +91,7 @@ void GameServer::sendLevel()
 {
 	std::vector<EntityModel> playerModels = level.getPlayers();
 	for (int i = 0; i < playerModels.size(); i++) {
-		LevelStateMessage* message = (LevelStateMessage*)server.CreateMessage(playerModels[i].getId(), GameMessageType::LEVEL_STATE_MESSAGE);
+		LevelStateMessage* message = (LevelStateMessage*)server.CreateMessage(playerModels[i].getId(), (int)GameMessageType::LEVEL_STATE_MESSAGE);
 		message->level = level;
 		server.SendMessage(playerModels[i].getId(),(int)GameChannel::UNRELIABLE,message);
 
@@ -104,6 +101,11 @@ void GameServer::sendLevel()
 
 void GameServer::startServer()
 {
+	server.Start(MAX_PLAYERS);
+	if (!server.IsRunning()) {
+		server.Stop();
+		throw std::runtime_error("Could not start server at port " + std::to_string(this->endpoint.GetPort()));
+	}
 	started = true;
 	threadServer.launch();
 }
@@ -144,42 +146,6 @@ bool GameServer::newGame(sf::Uint16 id)
 		return true;
 	}
 	return false;
-}
-
-bool GameServer::levelGenerated(sf::Uint16 id)
-{
-	return false;
-}
-
-EntityModel* GameServer::getEntityModelById(sf::Uint16 id)
-{
-	return entities[id];
-}
-
-
-
-
-void GameServer::clientConnected(int clientIndex)
-{
-	entities[indexNextClient] = new EntityModel(clientIndex, 0, 0, 0, 0);
-}
-
-void GameServer::clientDisconnected(int clientIndex)
-{
-}
-
-sf::Uint16 GameServer::getNextEntityId()
-{
-	return indexNextClient;
-}
-
-std::map<sf::Uint16, EntityModel*> GameServer::getAllEntities()
-{
-	return entities;
-}
-
-void GameServer::levelCompleted(sf::Uint16 id)
-{
 }
 */
 
@@ -223,7 +189,7 @@ void GameServer::broadcastPlayerWon(int clientIndex)
 {
 	for (int i = 0; i < MAX_PLAYERS; i++) {
 		if (server.IsClientConnected(i)) {
-			PlayerWonMessage* message = (PlayerWonMessage*)server.CreateMessage(i, PLAYER_WON_MESSAGE);
+			PlayerWonMessage* message = (PlayerWonMessage*)server.CreateMessage(i, (int)GameMessageType::PLAYER_WON_MESSAGE);
 			message->playerIndex = clientIndex;
 			server.SendMessage(i, (int)GameChannel::RELIABLE,message);
 		}

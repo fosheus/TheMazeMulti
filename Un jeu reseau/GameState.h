@@ -52,11 +52,11 @@ private:
 
 	GameServer* server;
 
-	yojimbo::Client client;
-	yojimbo::Address endpoint;
 	GameConnectionConfig connectionConfig;
 	GameAdapter adapter;
-
+	yojimbo::Client client;
+	yojimbo::Address endpoint;
+	
 	MoveList moveList;
 
 	GameState::State currentState;

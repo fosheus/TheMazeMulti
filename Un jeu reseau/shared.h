@@ -33,6 +33,7 @@
 #include <inttypes.h>
 #include <time.h>
 #include "Level.h"
+#include "IServerConnection.h"
 
 
 const uint64_t ProtocolId = 0x11223364556677ULL;
@@ -43,7 +44,7 @@ const int ServerPort = 40000;
 static const uint8_t DEFAULT_PRIVATE_KEY[yojimbo::KeyBytes] = { 0 };
 static const int MAX_PLAYERS = 5;
 
-enum GameMessageType
+enum class GameMessageType
 {
 	MOVE_MESSAGE,
 	LEVEL_STATE_MESSAGE,
@@ -119,9 +120,10 @@ struct PlayerWonMessage : public Message {
 };
 
 
-YOJIMBO_MESSAGE_FACTORY_START(GameMessageFactory, NUM_MESSAGE_TYPES);
-YOJIMBO_DECLARE_MESSAGE_TYPE(MOVE_MESSAGE, MoveMessage);
-YOJIMBO_DECLARE_MESSAGE_TYPE(LEVEL_STATE_MESSAGE, LevelStateMessage);
+YOJIMBO_MESSAGE_FACTORY_START(GameMessageFactory,(int)GameMessageType::NUM_MESSAGE_TYPES);
+YOJIMBO_DECLARE_MESSAGE_TYPE((int)GameMessageType::MOVE_MESSAGE, MoveMessage);
+YOJIMBO_DECLARE_MESSAGE_TYPE((int)GameMessageType::LEVEL_STATE_MESSAGE, LevelStateMessage);
+YOJIMBO_DECLARE_MESSAGE_TYPE((int)GameMessageType::PLAYER_WON_MESSAGE, PlayerWonMessage);
 YOJIMBO_MESSAGE_FACTORY_FINISH();
 
 class GameAdapter : public Adapter
@@ -132,20 +134,25 @@ public:
 	{
 		return YOJIMBO_NEW(allocator, GameMessageFactory, allocator);
 	}
-	/*
+	explicit GameAdapter(IServerConnection* server = NULL) : m_server(server) {}
+	
 	void OnServerClientConnected(int clientIndex) override {
-		if (server != NULL) {
-			server->clientConnected(clientIndex);
+		if (m_server != NULL) {
+			m_server->clientConnection(clientIndex);
 		}
 	}
 
 	void OnServerClientDisconnected(int clientIndex) override {
-		if (server != NULL) {
-			server->clientDisconnected(clientIndex);
+		if (m_server != NULL) {
+			m_server->clientDisconnection(clientIndex);
 		}
 	}
-	*/
+private:
+
+	IServerConnection * m_server;
 	
 };
 
-static GameAdapter adapter;
+
+
+

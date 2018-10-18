@@ -8,7 +8,7 @@
 class GameServer :public IServerConnection
 {
 public:
-	GameServer(GameDataRef data,int port );
+	GameServer(GameDataRef data );
 	~GameServer();
 
 	void startServer();
@@ -40,10 +40,11 @@ private :
 
 	bool started;
 
+	GameConnectionConfig m_connectionConfig;
+	GameAdapter m_adapter;
 	yojimbo::Server server;
 	yojimbo::Address endpoint;
-	GameConnectionConfig connectionConfig;
-	GameAdapter adapter;
+	
 
 	sf::Clock clock;
 	Level level;

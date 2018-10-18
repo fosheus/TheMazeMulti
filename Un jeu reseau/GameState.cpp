@@ -1,9 +1,8 @@
 #include "GameState.h"
 
-
 using namespace yojimbo;
 
-GameState::GameState(GameDataRef data,sf::String address,sf::String pseudo,bool local) :_data(data),maze(data),mazeRender(data),moveList(0),adapter(),
+GameState::GameState(GameDataRef data,sf::String address,sf::String pseudo,bool local) :_data(data),maze(data),mazeRender(data),moveList(0),connectionConfig(),
 	client(yojimbo::GetDefaultAllocator(),yojimbo::Address("0.0.0.0"),connectionConfig,adapter,0.0f)
 {
 	
@@ -15,7 +14,7 @@ GameState::GameState(GameDataRef data,sf::String address,sf::String pseudo,bool 
 		std::cout << "CLIENT" << std::endl;
 	}
 	else {
-		server = new GameServer(data, ServerPort);
+		server = new GameServer(data);
 		this->_data->window.setTitle("SERVER");
 		std::cout << "SERVER" << std::endl;
 	}
@@ -24,10 +23,8 @@ GameState::GameState(GameDataRef data,sf::String address,sf::String pseudo,bool 
 	sendTimeout = 0;
 	pingDt = 0;
 	identifier = 0;
-	uint8_t privateKey[yojimbo::KeyBytes];
-	memset(privateKey, 0, yojimbo::KeyBytes);
 	this->endpoint = Address(address.toAnsiString().c_str(),ServerPort);
-	client.InsecureConnect(privateKey, clientId,endpoint);
+	client.InsecureConnect(DEFAULT_PRIVATE_KEY, clientId,endpoint);
 	currentState = State::DISCONNECTED;
 	
 	
@@ -147,7 +144,9 @@ void GameState::Update(float dt)
 		updated = false;
 	}
 	for (int i = 0; i < MAX_PLAYERS;i++) {
-		players[i]->interpolation(dt);
+		if (players[i] != nullptr) {
+			players[i]->interpolation(dt);
+		}
 	}
 
 	if (sendTimeout > 2.0f / 60.0f) {
@@ -219,10 +218,10 @@ void GameState::processMessage(yojimbo::Message * message)
 {
 	switch (message->GetType())
 	{
-	case GameMessageType::LEVEL_STATE_MESSAGE: 
+	case (int)GameMessageType::LEVEL_STATE_MESSAGE: 
 		processLevelStateMessage((LevelStateMessage*)message);
 		break;
-	case GameMessageType::PLAYER_WON_MESSAGE:
+	case (int)GameMessageType::PLAYER_WON_MESSAGE:
 		break;
 	default:
 		break;
