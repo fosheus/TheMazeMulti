@@ -10,10 +10,12 @@ GameState::GameState(GameDataRef data,sf::String address,sf::String pseudo,bool 
 	yojimbo::random_bytes((uint8_t*)&clientId, 8);
 	
 	if (!local) {
+		this->endpoint = Address(address.toAnsiString().c_str(), ServerPort);
 		this->_data->window.setTitle("CLIENT");
 		std::cout << "CLIENT" << std::endl;
 	}
 	else {
+		this->endpoint = Address("127.0.0.1", ServerPort);
 		server = new GameServer(data);
 		this->_data->window.setTitle("SERVER");
 		std::cout << "SERVER" << std::endl;
@@ -23,7 +25,6 @@ GameState::GameState(GameDataRef data,sf::String address,sf::String pseudo,bool 
 	sendTimeout = 0;
 	pingDt = 0;
 	identifier = 0;
-	this->endpoint = Address(address.toAnsiString().c_str(),ServerPort);
 	client.InsecureConnect(DEFAULT_PRIVATE_KEY, clientId,endpoint);
 	currentState = State::DISCONNECTED;
 	
@@ -114,6 +115,8 @@ void GameState::Update(float dt)
 				delete players[i];
 			}
 			currentState = DISCONNECTED;
+			std::cout << "Disconnection" << std::endl;
+
 		}
 	}
 	else {
@@ -122,6 +125,7 @@ void GameState::Update(float dt)
 			//we just connected, we swap 
 			players[clientIndex] = offlinePlayer;
 			currentState = CONNECTED;
+			std::cout << "Connection" << std::endl;
 			
 		}
 		processMessages();
@@ -136,11 +140,13 @@ void GameState::Update(float dt)
 		if (e->getY() + deltaY * dt > 0 && e->getY() + deltaY * dt < _data->window.getSize().y) {
 			e->move(0, deltaY, dt);
 		}
-		MoveMessage* message = (MoveMessage*)client.CreateMessage((int)GameMessageType::MOVE_MESSAGE);
-		message->deltaX = deltaX * dt;
-		message->deltaY = deltaY * dt;
-		message->moveId = moveId++;
-		client.SendMessage((int)GameChannel::UNRELIABLE,message);
+		if (client.IsConnected()) {
+			MoveMessage* message = (MoveMessage*)client.CreateMessage((int)GameMessageType::MOVE_MESSAGE);
+			message->deltaX = deltaX * dt;
+			message->deltaY = deltaY * dt;
+			message->moveId = moveId++;
+			client.SendMessage((int)GameChannel::UNRELIABLE, message);
+		}
 		updated = false;
 	}
 	for (int i = 0; i < MAX_PLAYERS;i++) {
@@ -174,13 +180,13 @@ void GameState::Draw(float dt)
 				sf::CircleShape oui;
 				oui.setPosition(players[i]->getX(), players[i]->getY());
 				oui.setRadius(30);
-				oui.setOrigin(30, 30);
+				oui.setOrigin(15, 15);
 				oui.setFillColor(sf::Color::Transparent);
 				oui.setOutlineThickness(1);
 				oui.setOutlineColor(sf::Color::Black);
 				//this->_data->window.draw(oui);
 				this->_data->window.draw(*players[i]);
-				score.setPosition(_data->window.getSize().x / 5 * 4, _data->window.getSize().y / 5 + 50 * i++);
+				score.setPosition(_data->window.getSize().x / 5 * 4, _data->window.getSize().y / 5 + 50 * i);
 				score.setString(players[i]->getName().toAnsiString() + " : " + std::to_string(players[i]->getScore()));
 				_data->window.draw(score);
 			}
