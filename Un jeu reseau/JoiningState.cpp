@@ -17,9 +17,12 @@ void JoiningState::Init()
 
 	_hostButton.setTexture(_data->assets.GetImage(JOIN_MENU_HOST_BUTTON));
 	_joinButton.setTexture(_data->assets.GetImage(JOIN_MENU_JOIN_BUTTON));
+	_cancelButton.setTexture(_data->assets.GetImage(JOIN_MENU_CANCEL_BUTTON));
+
 	_addressTextArea.setTexture(_data->assets.GetImage(JOIN_MENU_TEXT_AREA));
 	_nameTextArea.setTexture(_data->assets.GetImage(JOIN_MENU_TEXT_AREA));
 	_background.setTexture(_data->assets.GetImage(JOIN_SCREEN_BACKGROUND_FILEPATH));
+	
 
 	lblAddress.setFont(basicFont);
 	lblName.setFont(basicFont);
@@ -35,9 +38,10 @@ void JoiningState::Init()
 	_nameTextArea.setPosition(_data->window.getSize().x / 3 - _nameTextArea.getGlobalBounds().width / 2, _data->window.getSize().y / 2 - _nameTextArea.getGlobalBounds().height / 2);
 
 	_hostButton.setPosition(_data->window.getSize().x / 3*2 - _hostButton.getGlobalBounds().width / 2, _data->window.getSize().y / 7*2 - _hostButton.getGlobalBounds().height / 2+50);
-	lblAddress.setPosition(_data->window.getSize().x / 3*2-40, _data->window.getSize().y / 14 * 9 -20);
+	lblAddress.setPosition(_data->window.getSize().x / 3 * 2 - 40, _data->window.getSize().y / 14 * 9 - 20);
 	_addressTextArea.setPosition(_data->window.getSize().x / 3*2 - _addressTextArea.getGlobalBounds().width / 2, _data->window.getSize().y / 7* 5 - _addressTextArea.getGlobalBounds().height / 2);
 	_joinButton.setPosition(_data->window.getSize().x / 3*2 - _joinButton.getGlobalBounds().width / 2, _data->window.getSize().y / 7 * 6  - _joinButton.getGlobalBounds().height / 2);
+	_cancelButton.setPosition(50, _data->window.getSize().y - _cancelButton.getGlobalBounds().height - 50);
 
 	address.setFont(basicFont);
 	address.setPosition(_addressTextArea.getPosition().x + 5, _addressTextArea.getPosition().y + 5);
@@ -98,24 +102,44 @@ void JoiningState::HandleInput()
 		if (this->_data->inputs.IsSpriteClicked(_nameTextArea, sf::Mouse::Left, _data->window)) {
 			textNameHasFocus = true;
 		}
-		if (this->_data->inputs.IsSpriteClicked(_joinButton, sf::Mouse::Left, _data->window)) {
-			std::cout << address.getString().toAnsiString() << std::endl;
-			if (addressStr.getSize() > 0 && nameStr.getSize() > 2) {
+		if (this->_data->inputs.IsSpriteClicked(_joinButton, sf::Mouse::Left, _data->window) && !joinButtonClicking) {
+			if (addressStr.getSize() > 0 && nameStr.getSize() > 0) {
+				joinButtonClicking = true;
 				_data->machine.AddState(StateRef(new GameState(_data, address.getString(), name.getString(), false)), true);
 			}
 		}
-		if (this->_data->inputs.IsSpriteClicked(_hostButton, sf::Mouse::Left, _data->window)) {
-			std::cout << address.getString().toAnsiString() << std::endl;
-			if (nameStr.getSize() > 2) {
+		if (this->_data->inputs.IsSpriteClicked(_hostButton, sf::Mouse::Left, _data->window) &&!hostButtonClicking) {
+			if (nameStr.getSize() > 0) {
+				hostButtonClicking = true;
 				_data->machine.AddState(StateRef(new GameState(_data, "", name.getString(), true)), true);
 			}
 		}
+		if (this->_data->inputs.IsSpriteClicked(_cancelButton, sf::Mouse::Left, _data->window) && !cancelButtonClicking) {
+			cancelButtonClicking = true;
+			_data->machine.AddState(StateRef(new MainMenuState(_data)), true);
+		}
+	
 	}
 	
 }
 
 void JoiningState::Update(float dt)
 {
+	
+	if (nameStr.getSize() > 0) {
+		_hostButton.setColor(sf::Color::White);
+	}
+	else {
+		_hostButton.setColor(sf::Color(50, 50, 50));
+	}
+	if (addressStr.getSize() > 0 && nameStr.getSize() > 0) {
+		_joinButton.setColor(sf::Color::White);
+	}
+	else {
+		_joinButton.setColor(sf::Color(50, 50, 50));
+	}
+
+	
 }
 
 void JoiningState::Draw(float dt)
@@ -124,6 +148,7 @@ void JoiningState::Draw(float dt)
 	this->_data->window.draw(_background);
 	this->_data->window.draw(_hostButton);
 	this->_data->window.draw(_joinButton);
+	this->_data->window.draw(_cancelButton);
 	this->_data->window.draw(_addressTextArea);
 	this->_data->window.draw(_nameTextArea);
 	this->_data->window.draw(address);

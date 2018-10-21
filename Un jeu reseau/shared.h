@@ -36,7 +36,7 @@
 #include "IServerConnection.h"
 
 
-const uint64_t ProtocolId = 0x11223364556677ULL;
+const uint64_t ProtocolId = 0x11223344556677ULL;
 
 const int ClientPort = 30000;
 const int ServerPort = 40000;
@@ -48,7 +48,11 @@ enum class GameMessageType
 {
 	MOVE_MESSAGE,
 	LEVEL_STATE_MESSAGE,
+	PLAYER_NAME_MESSAGE,
 	PLAYER_WON_MESSAGE,
+	EVENT_CD_PLAYER_MESSAGE,
+	GENERATE_MAZE_MESSAGE,
+	GAME_EVENT_MESSAGE,
 	NUM_MESSAGE_TYPES
 };
 
@@ -58,12 +62,18 @@ enum class GameChannel {
 	COUNT
 };
 
+enum class GameEventType {
+	NEW_GAME,
+	NUM_GAME_EVENT_TYPE
+};
+
 struct GameConnectionConfig : ClientServerConfig {
 	GameConnectionConfig() {
 		numChannels = 2;
 		channel[(int)GameChannel::RELIABLE].type = yojimbo::CHANNEL_TYPE_RELIABLE_ORDERED;
 		channel[(int)GameChannel::UNRELIABLE].type = yojimbo::CHANNEL_TYPE_UNRELIABLE_UNORDERED;
 	}
+	~GameConnectionConfig() {}
 };
 
 struct MoveMessage : public Message {
@@ -119,23 +129,138 @@ struct PlayerWonMessage : public Message {
 
 };
 
+struct EventCDPlayerMessage : public Message {
+
+	int action; //1 create, 0 destroy
+	int clientIndex;
+	float x;
+	float y;
+
+	EventCDPlayerMessage() {
+		action = -1;
+		clientIndex = -1;
+		x = 0;
+		y = 0;
+	}
+	template<typename Stream> bool Serialize(Stream &stream) {
+		serialize_int(stream, action,0,1);
+		serialize_int(stream, clientIndex,0,MAX_PLAYERS-1);
+		serialize_float(stream, x);
+		serialize_float(stream, y);
+		return true;
+	}
+
+	YOJIMBO_VIRTUAL_SERIALIZE_FUNCTIONS();
+
+};
+
+struct GenerateMazeMessage : public Message {
+	uint32_t seed;
+	int width;
+	int height;
+
+	GenerateMazeMessage() {
+		seed = 0;
+		width = 0;
+		height = 0;
+	}
+	template<typename Stream> bool Serialize(Stream &stream) {
+		serialize_uint32(stream, seed);
+		serialize_int(stream, width, 11, 1000);
+		serialize_int(stream, height, 11, 1000);
+		return true;
+	}
+	YOJIMBO_VIRTUAL_SERIALIZE_FUNCTIONS();
+
+};
+
+struct GameEventMessage : public Message {
+	int gameEventType;
+	int sender;
+	GameEventMessage() {
+
+	}
+	template<typename Stream> bool Serialize(Stream &stream) {
+		serialize_uint32(stream, gameEventType);
+		serialize_uint32(stream, sender);
+		return true;
+	}
+	YOJIMBO_VIRTUAL_SERIALIZE_FUNCTIONS();
+
+};
+
+struct PlayerNameMessage : public Message {
+	int clientIndex;
+	std::string name;
+
+	PlayerNameMessage() {
+
+	}
+
+	template <typename Stream> bool Serialize(Stream & stream)
+	{
+		char bufferSize;
+		char c;
+		if (Stream::IsReading) {
+			serialize_int(stream, clientIndex, 0, MAX_PLAYERS);
+			serialize_int(stream, bufferSize, 0, 255);
+			for (int i = 0; i < bufferSize; i++) {
+				serialize_bits(stream, c, 8);
+				name += c;
+			}
+			return true;
+		}
+		if (Stream::IsWriting) {
+			bufferSize = name.size();
+			serialize_int(stream, clientIndex, 0, MAX_PLAYERS);
+			serialize_int(stream, bufferSize, 0, 255);
+			for (int i = 0; i < bufferSize; i++) {
+				serialize_bits(stream, name[i], 8);
+			}
+
+			return true;
+		}
+	}
+	YOJIMBO_VIRTUAL_SERIALIZE_FUNCTIONS();
+
+};
+
 
 YOJIMBO_MESSAGE_FACTORY_START(GameMessageFactory,(int)GameMessageType::NUM_MESSAGE_TYPES);
 YOJIMBO_DECLARE_MESSAGE_TYPE((int)GameMessageType::MOVE_MESSAGE, MoveMessage);
 YOJIMBO_DECLARE_MESSAGE_TYPE((int)GameMessageType::LEVEL_STATE_MESSAGE, LevelStateMessage);
 YOJIMBO_DECLARE_MESSAGE_TYPE((int)GameMessageType::PLAYER_WON_MESSAGE, PlayerWonMessage);
+YOJIMBO_DECLARE_MESSAGE_TYPE((int)GameMessageType::EVENT_CD_PLAYER_MESSAGE, EventCDPlayerMessage);
+YOJIMBO_DECLARE_MESSAGE_TYPE((int)GameMessageType::GENERATE_MAZE_MESSAGE, GenerateMazeMessage);
+YOJIMBO_DECLARE_MESSAGE_TYPE((int)GameMessageType::GAME_EVENT_MESSAGE, GameEventMessage);
+YOJIMBO_DECLARE_MESSAGE_TYPE((int)GameMessageType::PLAYER_NAME_MESSAGE, PlayerNameMessage);
 YOJIMBO_MESSAGE_FACTORY_FINISH();
+
+
 
 class GameAdapter : public Adapter
 {
 public:
 
+	explicit GameAdapter(IServerConnection* server = NULL) : m_server(server) {}
+
 	MessageFactory * CreateMessageFactory(Allocator & allocator)
 	{
 		return YOJIMBO_NEW(allocator, GameMessageFactory, allocator);
 	}
-	explicit GameAdapter(IServerConnection* server = NULL) : m_server(server) {}
 	
+	void ClientSendLoopbackPacket(int clientIndex, const uint8_t * packetData, int packetBytes, uint64_t packetSequence)
+	{
+		std::cout << "loopback packet sent from client" << std::endl;
+	}
+
+	void ServerSendLoopbackPacket(int clientIndex, const uint8_t * packetData, int packetBytes, uint64_t packetSequence)
+	{
+		std::cout << "loopback packet sent from server" << std::endl;
+
+	}
+	
+
 	void OnServerClientConnected(int clientIndex) override {
 		if (m_server != NULL) {
 			m_server->clientConnection(clientIndex);

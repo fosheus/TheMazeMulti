@@ -23,8 +23,6 @@
     <ClCompile Include="Timing.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="Animation.h" />
-    <ClInclude Include="AssetManager.h" />
     <ClInclude Include="DEFINITIONS.h" />
     <ClInclude Include="Entity.h" />
     <ClInclude Include="EntityModel.h" />
@@ -46,5 +44,7 @@
     <ClInclude Include="Timing.h" />
     <ClInclude Include="Shared.h" />
     <ClInclude Include="IServerConnection.h" />
+    <ClInclude Include="AssetManager.h" />
+    <ClInclude Include="Animation.h" />
   </ItemGroup>
 </Project>

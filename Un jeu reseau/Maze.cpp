@@ -2,7 +2,7 @@
 #include <iostream>
 
 
-Maze::Maze(GameDataRef data ):_data(data)
+Maze::Maze()
 {
 }
 
@@ -204,63 +204,6 @@ void Maze::optimizeMazeForRendering() {
 	}
 }
 
-void Maze::draw(sf::RenderWindow & window,float textureScale)
-{
-	sf::Texture tmplte = _data->assets.GetImage("images/top.png");
-	const int TEXTURE_SIZE = tmplte.getSize().x;
-	sf::Sprite sprite;
-	sprite.setScale(textureScale, textureScale);
-	for (size_t i = 0; i < width; i++)
-	{
-		for (size_t j = 0; j < height; j++)
-		{
-			bool top = false, right=false, left=false, bot=false;
-			sprite.setPosition(TEXTURE_SIZE*textureScale*i,TEXTURE_SIZE*textureScale*j);
-
-			if (maze[i][j] == 0) {
-				if (i > 0) {
-					if (maze[i - 1][j] == 0) {
-						left = true;
-					}
-				} if (j > 0) {
-					if (maze[i][j - 1] == 0) {
-						top = true;
-					}
-				} if (j < height - 1) {
-					if (maze[i][j + 1] == 0) {
-						bot = true;
-					}
-				} if (i < width - 1) {
-					if (maze[i + 1][j] == 0) {
-						right = true;
-					}
-				}
-			}
-
-			if (top) {
-				sprite.setTexture(_data->assets.GetImage("images/top.png"));
-				window.draw(sprite);
-			} 
-			if (left) {
-				sprite.setTexture(_data->assets.GetImage("images/left.png"));
-				window.draw(sprite);
-			}
-			if (right) {
-				sprite.setTexture(_data->assets.GetImage("images/right.png"));
-				window.draw(sprite);
-			}
-			if (bot) {
-				sprite.setTexture(_data->assets.GetImage("images/bot.png"));
-				window.draw(sprite);
-			}
-			if (!top && !left && !right && !bot && maze[i][j]==0) {
-				sprite.setTexture(_data->assets.GetImage("images/center.png"));
-				window.draw(sprite);
-			}
-
-		}
-	}
-}
 
 int Maze::getWidth() const
 {

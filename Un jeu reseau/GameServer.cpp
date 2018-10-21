@@ -1,9 +1,8 @@
 #include "GameServer.h"
 
-GameServer::GameServer(GameDataRef data): _data(data),maze(data), threadServer(&GameServer::run,this), m_adapter(this),
-	server(yojimbo::GetDefaultAllocator(),DEFAULT_PRIVATE_KEY,Address("127.0.0.1",ServerPort),m_connectionConfig,m_adapter,0.0f)
+GameServer::GameServer(): maze(), threadServer(&GameServer::run,this), m_adapter(this),
+	server(yojimbo::GetDefaultAllocator(),DEFAULT_PRIVATE_KEY,Address(sf::IpAddress::getLocalAddress().toString().c_str(),ServerPort),m_connectionConfig,m_adapter,100.0f)
 {
-	
 }
 
 GameServer::~GameServer()
@@ -24,6 +23,8 @@ void GameServer::run()
 			accumulator = 0;
 		}
 	}
+	server.DisconnectAllClients();
+	
 }
 
 void GameServer::update(float dt)
@@ -32,8 +33,9 @@ void GameServer::update(float dt)
 		started = false;
 		return;
 	}
+	serverTime += dt;
 
-	server.AdvanceTime(dt);
+	server.AdvanceTime(serverTime);
 	server.ReceivePackets();
 	processMessages();
 
@@ -46,7 +48,7 @@ void GameServer::processMessages()
 {
 	for (int i = 0; i < MAX_PLAYERS; i++) {
 		if (server.IsClientConnected(i)) {
-			for (int j = 0; i < m_connectionConfig.numChannels; j++) {
+			for (int j = 0; j < m_connectionConfig.numChannels; j++) {
 				yojimbo::Message* message = server.ReceiveMessage(i, j);
 				while (message != NULL) {
 					processMessage(i, message);
@@ -65,6 +67,12 @@ void GameServer::processMessage(int clientIndex, Message * message)
 	case (int)GameMessageType::MOVE_MESSAGE:
 		processMoveMessage(clientIndex,(MoveMessage*) message);
 		break;
+	case (int)GameMessageType::PLAYER_NAME_MESSAGE:
+		processPlayerNameMessage(clientIndex, (PlayerNameMessage*)message);
+		break;
+	case (int)GameMessageType::GAME_EVENT_MESSAGE:
+		processGameEventMessage(clientIndex, (GameEventMessage*)message);
+		break;
 	default:
 		break;
 	}
@@ -75,9 +83,7 @@ void GameServer::processMoveMessage(int clientIndex, MoveMessage* message)
 	MoveMessage* moveMessage = (MoveMessage*)message;
 	EntityModel *e = level.getPlayerByIndex(clientIndex);
 	Move m(moveMessage->deltaX, moveMessage->deltaY, moveMessage->moveId);
-
 	if (moveMessage->moveId > e->getLastMoveId()) {
-		e->setLastMoveId(moveMessage->moveId);
 		e->updateFromMove(m);
 		managePlayerWin(e);
 		if (collisionManagement(e)) {
@@ -87,13 +93,66 @@ void GameServer::processMoveMessage(int clientIndex, MoveMessage* message)
 	}
 }
 
+void GameServer::processPlayerNameMessage(int clientIndex, PlayerNameMessage* message) {
+	level.updatePlayerName(clientIndex, message->name);
+
+	for (int i = 0; i < MAX_PLAYERS; i++) {
+		if (server.IsClientConnected(i)) {
+			PlayerNameMessage* outMessage = (PlayerNameMessage*)server.CreateMessage(i, (int)GameMessageType::PLAYER_NAME_MESSAGE);
+			outMessage->clientIndex = clientIndex;
+			outMessage->name = message->name;
+			server.SendMessage(i, (int)GameChannel::RELIABLE, outMessage);
+		}
+	}
+}
+
+void GameServer::processGameEventMessage(int clientIndex, GameEventMessage* message) {
+	switch(message->gameEventType){
+	case (int)GameEventType::NEW_GAME:
+		processNewGame(clientIndex);
+		break;
+	default:
+		break;
+	}
+}
+
+void GameServer::processNewGame(int clientIndex)
+{
+	int seed;
+	int width;
+	int height;
+	if (clientIndex == 0 && !maze.isGenerated()) {
+		width = 11 + difficulty * 4;
+		height = 11 + difficulty * 4;
+		srand(time(NULL));
+		seed = rand();
+		maze.clearMaze();
+		maze.generateMaze(seed, width, height);
+		for (int i = 0; i < MAX_PLAYERS; i++) {
+			EntityModel* current = level.getPlayerByIndex(i); 
+			if (current != NULL) {
+				current->setX(0);
+				current->setY(1);
+				GenerateMazeMessage* outMessage = (GenerateMazeMessage*)server.CreateMessage(i, (int)GameMessageType::GENERATE_MAZE_MESSAGE);
+				outMessage->seed = seed;
+				outMessage->width =width;
+				outMessage->height = height;
+				server.SendMessage(i, (int)GameChannel::RELIABLE, outMessage);
+			}
+		}
+	}
+}
+
+
 void GameServer::sendLevel()
 {
 	std::vector<EntityModel> playerModels = level.getPlayers();
 	for (int i = 0; i < playerModels.size(); i++) {
-		LevelStateMessage* message = (LevelStateMessage*)server.CreateMessage(playerModels[i].getId(), (int)GameMessageType::LEVEL_STATE_MESSAGE);
-		message->level = level;
-		server.SendMessage(playerModels[i].getId(),(int)GameChannel::UNRELIABLE,message);
+		if (playerModels[i].getId() >= 0) {
+			LevelStateMessage* message = (LevelStateMessage*)server.CreateMessage(playerModels[i].getId(), (int)GameMessageType::LEVEL_STATE_MESSAGE);
+			message->level = level;
+			server.SendMessage(playerModels[i].getId(), (int)GameChannel::UNRELIABLE, message);
+		}
 
 	}
 }
@@ -112,46 +171,13 @@ void GameServer::startServer()
 
 void GameServer::stopServer()
 {
-	server.DisconnectAllClients();
 	started = false;
 	threadServer.wait();
-	server.Stop();
-
-}
-
-/*
-
-bool GameServer::newGame(sf::Uint16 id)
-{
-	sf::Uint32 seed;
-	sf::Uint16 width;
-	sf::Uint16 height;
-	std::map<sf::Uint16, EntityModel*>::iterator it;
 	
-	if (id == 1 && !maze.getGenerated()) {
-		width = 11 + level * 2;
-		height = 11 + level * 2;
-		srand(time(NULL));
-		seed = rand();
-		maze.clearMaze();
-		maze.generateMaze(seed, width, height);
-		for (it = entities.begin(); it != entities.end(); it++) {
-			it->second->setX(0);
-			it->second->setY(1);
-			packetManager.broadcastEntityModel(*it->second);
-		}
-		MazeConfig config(seed, width, height);
-		packetManager.broadcastSeedAndDimensions(config);
-		
-		return true;
-	}
-	return false;
 }
-*/
-
 bool GameServer::collisionManagement(EntityModel * e)
 {
-	if (maze.getGenerated()) {
+	if (maze.isGenerated()) {
 		int x = (int)e->getX();
 		int y = (int)e->getY();
 		if (x >= 0 || x < maze.getWidth() && y >= 0 && y < maze.getHeight()) {
@@ -172,14 +198,14 @@ bool GameServer::collisionManagement(EntityModel * e)
 void GameServer::managePlayerWin(EntityModel * e)
 {
 	sf::Vector2f exit;
-	if (maze.getGenerated()) {
+	if (maze.isGenerated()) {
 		exit = maze.getExitPos();
 		int x = e->getX();
 		int y = e->getY();
 		if (x == exit.x && y == exit.y) {
 			maze.clearMaze();
 			broadcastPlayerWon(e->getId());
-			levelNbr++;
+			difficulty++;
 			e->setScore(e->getScore() + 1);
 		}
 	}
@@ -198,41 +224,16 @@ void GameServer::broadcastPlayerWon(int clientIndex)
 void GameServer::clientConnection(int clientIndex)
 {
 	level.newPlayer(EntityModel(clientIndex));
+	for (int i = 0; i < MAX_PLAYERS; i++) {
+		if (server.IsClientConnected(i)) {
+			EventCDPlayerMessage * message = (EventCDPlayerMessage*)server.CreateMessage(i, (int)GameMessageType::EVENT_CD_PLAYER_MESSAGE);
+			message->action = 1;
+			message->clientIndex = clientIndex;
+			server.SendMessage(i, (int)GameChannel::RELIABLE, message);
+		}
+	}
 }
 void GameServer::clientDisconnection(int clientIndex)
 {
-	delete level.getPlayerByIndex(clientIndex);
-	level.getPlayerByIndex(clientIndex);
+	level.removePlayer(clientIndex);
 }
-/*
-void GameServer::changeClientName(std::pair<sf::Uint16,sf::String> name)
-{
-	std::map<sf::Uint16, EntityModel*>::iterator it;
-	entities[name.first]->setName(name.second);
-	for (it = entities.begin(); it != entities.end(); it++) {
-		packetManager.broadcastName(it->first, it->second->getName());
-	}
-}
-
-void GameServer::updateFromMoveList(MoveList & moveList)
-{
-	EntityModel* e = entities[moveList.getClientId()];
-	if (e != nullptr) {
-		std::list<Move>::const_iterator it = moveList.getMoveListBeginIterator();
-		while (it != moveList.getMoveListEndIterator()) {
-			if (it->getMoveId() > e->getLastMoveId()) {
-				e->setLastMoveId(it->getMoveId());
-				e->updateFromMove(*it);
-				managePlayerWin(e);
-				if (collisionManagement(e)) {
-					e->rollbackMove(*it);
-				}
-				
-			}
-			it++;
-		}
-		
-		packetManager.broadcastEntityModel(*e);
-	}
-}
-*/

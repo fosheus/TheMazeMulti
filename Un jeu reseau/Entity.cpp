@@ -5,8 +5,7 @@
 Entity::Entity(sf::Uint16 id,float x, float y)
 {
 	this->id = id;
-	this->x = x;
-	this->y = y;
+	remotePosition = sf::Vector2f(0, 0);
 	this->score = 0;
 	sprite.setPosition(x, y);
 	sprite.setRadius(30);
@@ -29,14 +28,12 @@ sf::Uint16 Entity::getId()
 	return this->id;
 }
 
-float Entity::getX()
-{
-	return x;
+sf::Vector2f Entity::getRemotePosition() {
+	return remotePosition;
 }
 
-float Entity::getY()
-{
-	return y;
+sf::Vector2f Entity::getLocalPosition() {
+	return sprite.getPosition();
 }
 
 sf::CircleShape & Entity::getSprite()
@@ -44,24 +41,10 @@ sf::CircleShape & Entity::getSprite()
 	return sprite;
 }
 
-void Entity::setX(float x)
-{
-	this->x = x;
-}
-
-void Entity::setY(float y)
-{
-	this->y = y;
-}
 
 void Entity::setName(sf::String name)
 {
 	this->name = name;
-}
-
-void Entity::setScore(sf::Uint16 score)
-{
-	this->score = score;
 }
 
 sf::String Entity::getName()
@@ -74,21 +57,10 @@ sf::Uint16 Entity::getScore()
 	return score;
 }
 
-void Entity::move(float deltaX, float deltaY,float multiplier)
+void Entity::moveLocal(float deltaX, float deltaY,float multiplier)
 {
-	this->x += deltaX * multiplier;
-	this->y += deltaY * multiplier;
 	sprite.setPosition(sprite.getPosition().x+deltaX*multiplier, sprite.getPosition().y + deltaY* multiplier);
 }
-
-void Entity::setLocalPosition(float x, float y)
-{
-	this->x = x;
-	this->y = y;
-	this->sprite.setPosition(x, y);
-}
-
-
 
 void Entity::setRadius(float size)
 {
@@ -98,38 +70,34 @@ void Entity::setRadius(float size)
 
 void Entity::interpolation(float dt)
 {
-	const float threshold = 3.0f;
-	const float interpolation_constant = 0.1f;
-	float differenceX = x - sprite.getPosition().x;
-	float differenceY = y - sprite.getPosition().y;
-	float remoteX = sprite.getPosition().x;
-	float remoteY = sprite.getPosition().y;
+	
+	float differenceX = getRemotePosition().x -	getLocalPosition().x;
+	float differenceY = getRemotePosition().y - getLocalPosition().y;
+	float localX = sprite.getPosition().x;
+	float localY = sprite.getPosition().y;
 	if (std::abs(differenceX) < threshold) {
-		remoteX = x;
+		localX = getRemotePosition().x;
 	}
 	else {
-		remoteX += differenceX * interpolation_constant;
+		localX += differenceX * interpolation_constant;
 	}
 	if (std::abs(differenceY) < threshold) {
-		remoteY = y;
+		localY = getRemotePosition().y;
 	} else {
-		remoteY += differenceY * interpolation_constant;
+		localY += differenceY * interpolation_constant;
 
 	}
-	sprite.setPosition(remoteX, remoteY);
+	sprite.setPosition(localX, localY);
 }
 
-
-
-
-void Entity::updateFromModel(const EntityModel & entityModel, float scale)
+void Entity::updateRemoteFromModel(const EntityModel &em, float scale)
 {
-	if (this->id == entityModel.getId()) {
-		this->x=entityModel.getX()*scale;
-		this->y=entityModel.getY()*scale;
-		this->score = entityModel.getScore();
+	if (this->id == em.getId()) {
+		remotePosition = sf::Vector2f(em.getX()*scale, em.getY()*scale);
+		this->score = em.getScore();
 	}
 }
+
 
 EntityModel Entity::toModel(float scale)
 {

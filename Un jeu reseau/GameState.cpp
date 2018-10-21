@@ -2,12 +2,9 @@
 
 using namespace yojimbo;
 
-GameState::GameState(GameDataRef data,sf::String address,sf::String pseudo,bool local) :_data(data),maze(data),mazeRender(data),moveList(0),connectionConfig(),
+GameState::GameState(GameDataRef data,sf::String address,sf::String pseudo,bool local) :_data(data),maze(),mazeRender(data),connectionConfig(),
 	client(yojimbo::GetDefaultAllocator(),yojimbo::Address("0.0.0.0"),connectionConfig,adapter,0.0f)
 {
-	
-	uint64_t clientId;
-	yojimbo::random_bytes((uint8_t*)&clientId, 8);
 	
 	if (!local) {
 		this->endpoint = Address(address.toAnsiString().c_str(), ServerPort);
@@ -15,34 +12,49 @@ GameState::GameState(GameDataRef data,sf::String address,sf::String pseudo,bool 
 		std::cout << "CLIENT" << std::endl;
 	}
 	else {
-		this->endpoint = Address("127.0.0.1", ServerPort);
-		server = new GameServer(data);
+		this->endpoint = Address(sf::IpAddress::getLocalAddress().toString().c_str(), ServerPort);
 		this->_data->window.setTitle("SERVER");
 		std::cout << "SERVER" << std::endl;
+		_data->server.startServer();
 	}
+
+
+	hasFocus = true;
 	this->pseudo = pseudo;
 	identified = false;
-	sendTimeout = 0;
-	pingDt = 0;
+	sendClock = 0;
 	identifier = 0;
-	client.InsecureConnect(DEFAULT_PRIVATE_KEY, clientId,endpoint);
 	currentState = State::DISCONNECTED;
-	
+	yojimbo::random_bytes((uint8_t*)&clientId, 8);
 	
 }
 
 GameState::~GameState()
 {
-	closeAll();
+	
+}
+
+void GameState::quit()
+{
+
+	client.Disconnect();
+	_data->server.stopServer();
+
 }
 
 void GameState::Init()
 {
+
 	this->_background.setTexture(this->_data->assets.GetImage(GAME_STATE_BACKGROUND_FILEPATH));
 	this->_background.setPosition(this->_data->window.getSize().x / 2 - this->_background.getGlobalBounds().width / 2, this->_data->window.getSize().y / 2 - this->_background.getGlobalBounds().height / 2);
-	if (server != nullptr) {
-		server->startServer();
-	}
+
+
+	client.InsecureConnect(DEFAULT_PRIVATE_KEY, clientId, endpoint);
+
+
+	char addressString[256];
+	client.GetAddress().ToString(addressString, sizeof(addressString));
+	printf("client address is %s\n", addressString);
 
 	deltaX = 0;
 	deltaY = 0;
@@ -53,99 +65,141 @@ void GameState::Init()
 
 	offlinePlayer = new Entity(0, 0, 0, this->pseudo);
 	offlinePlayer->getSprite().setFillColor(sf::Color::Green);
-	moveId = 0;
 
 }
 
 void GameState::HandleInput()
 {
+	
 	sf::Event event;
 	
 	while (this->_data->window.pollEvent(event))
 	{
 
 		if (event.type == sf::Event::Closed) {
-			closeAll();
+			quit();
 			this->_data->machine.AddState(StateRef(new MainMenuState(this->_data)), true);
 
 		}
+		if (event.type == sf::Event::GainedFocus) {
+			hasFocus = true;
+		}
+		if (event.type == sf::Event::LostFocus) {
+			hasFocus = false;
+		}
 
 	}
-
-	if (sf::Keyboard::isKeyPressed(sf::Keyboard::Escape)) {
-		closeAll();
-		this->_data->machine.AddState(StateRef(new MainMenuState(this->_data)), true);
-	}
+	
 	deltaX = 0;
 	deltaY = 0;
-	if (sf::Keyboard::isKeyPressed(sf::Keyboard::Q)) {
-		updated = true;
-		deltaX -= 200;
-	}
-	if (sf::Keyboard::isKeyPressed(sf::Keyboard::S)) {
-		updated = true;
-		deltaY += 200;
-	}
-	if (sf::Keyboard::isKeyPressed(sf::Keyboard::D)) {
-		updated = true;
-		deltaX += 200;
-	}
-	if (sf::Keyboard::isKeyPressed(sf::Keyboard::Z)) {
-		updated = true;
-		deltaY -= 200;
-	}
-	if (sf::Keyboard::isKeyPressed(sf::Keyboard::P)) {
+	if (hasFocus) {
+		bool up = false, down = false, left = false, right = false;
 
+		if (sf::Keyboard::isKeyPressed(sf::Keyboard::Escape)) {
+			quit();
+			this->_data->machine.AddState(StateRef(new MainMenuState(this->_data)), true);
+		}
+
+		if (sf::Keyboard::isKeyPressed(sf::Keyboard::Q)) {
+			updated = true;
+			deltaX -= 200;
+			left = true;
+		}
+		if (sf::Keyboard::isKeyPressed(sf::Keyboard::S)) {
+			updated = true;
+			deltaY += 200 ;
+			down = true;
+		}
+		if (sf::Keyboard::isKeyPressed(sf::Keyboard::D)) {
+			updated = true;
+			deltaX += 200 ;
+			right = true;
+		}
+		if (sf::Keyboard::isKeyPressed(sf::Keyboard::Z)) {
+			updated = true;
+			deltaY -= 200 ;
+			up = true;
+		}
+		if (sf::Keyboard::isKeyPressed(sf::Keyboard::R)) {
+			GameEventMessage* message = (GameEventMessage*)client.CreateMessage((int)GameMessageType::GAME_EVENT_MESSAGE);
+			message->gameEventType = (int)GameEventType::NEW_GAME;
+			message->sender = client.GetClientIndex();
+			client.SendMessage((int)GameChannel::RELIABLE, message);
+		}
+		if ((up || down) && (left || right)) {
+			deltaX /= std::sqrt(2.0f);
+			deltaY /= std::sqrt(2.0f);
+		}
 	}
+	
 }
 
 void GameState::Update(float dt)
 {
 	Entity * e = NULL;
-	sendTimeout += dt;
+	/*
+	Process everything corresponding to network
+	*/
+	sendClock += dt;
 
-	client.AdvanceTime(dt);
+	clientTime += dt;
+
 	client.ReceivePackets();
-	if (!client.IsConnected()) {
-		e = offlinePlayer;
-		if (currentState == State::CONNECTED) {
-			//we just get disconnected so we swap the current player entity to the offline entity
-			players[clientIndex] = NULL;
-			for (int i = 0; i < MAX_PLAYERS; i++) {
-				delete players[i];
-			}
-			currentState = DISCONNECTED;
-			std::cout << "Disconnection" << std::endl;
 
+	client.AdvanceTime(clientTime);
+
+	connectionSucceed();
+
+	if (client.IsConnected()) {
+		processMessages();
+		if (players[client.GetClientIndex()] != NULL) {
+			e = players[client.GetClientIndex()];
+		}
+		else {
+			e = offlinePlayer;
 		}
 	}
 	else {
-		if (currentState == DISCONNECTED) {
-			clientIndex = client.GetClientIndex();
-			//we just connected, we swap 
-			players[clientIndex] = offlinePlayer;
-			currentState = CONNECTED;
-			std::cout << "Connection" << std::endl;
-			
-		}
-		processMessages();
-		e = players[clientIndex];
+		e = offlinePlayer;
 	}
 
-	if (updated) {
-		moveList.addMove(deltaX*dt / (TEXTURE_SIZE*scale), deltaY*dt / (TEXTURE_SIZE*scale));
-		if (e->getX() + deltaX * dt > 0 && e->getX() + deltaX * dt < _data->window.getSize().x) {
-			e->move(deltaX, 0, dt);
+	
+
+	if (client.ConnectionFailed() || client.IsDisconnected()) {
+		players[clientIndex] = NULL;
+		for (int i = 0; i < MAX_PLAYERS; i++) {
+			delete players[i];
 		}
-		if (e->getY() + deltaY * dt > 0 && e->getY() + deltaY * dt < _data->window.getSize().y) {
-			e->move(0, deltaY, dt);
+		currentState = DISCONNECTED;
+		std::cout << "Disconnection" << std::endl;
+		quit();
+		this->_data->machine.AddState(StateRef(new MainMenuState(this->_data)), true);
+	}
+
+	/*
+	update local state 
+	*/
+
+	if (updated) {
+		MoveMessage* message = (MoveMessage*)client.CreateMessage((int)GameMessageType::MOVE_MESSAGE);
+		deltaX = deltaX * dt / (TEXTURE_SIZE*scale);
+		deltaY = deltaY * dt / (TEXTURE_SIZE*scale);
+		if (e->getRemotePosition().x + deltaX > 0 && e->getRemotePosition().x + deltaX < _data->window.getSize().x) {
+			e->moveLocal(deltaX, 0,1);
+			message->deltaX = deltaX;
+			
+		}
+		if (e->getRemotePosition().y + deltaY > 0 && e->getRemotePosition().y + deltaY < _data->window.getSize().y) {
+			e->moveLocal(0, deltaY, 1);
+			message->deltaY = deltaY ;
+			
 		}
 		if (client.IsConnected()) {
-			MoveMessage* message = (MoveMessage*)client.CreateMessage((int)GameMessageType::MOVE_MESSAGE);
-			message->deltaX = deltaX * dt;
-			message->deltaY = deltaY * dt;
 			message->moveId = moveId++;
 			client.SendMessage((int)GameChannel::UNRELIABLE, message);
+		}
+		else {
+			delete message;
 		}
 		updated = false;
 	}
@@ -155,10 +209,13 @@ void GameState::Update(float dt)
 		}
 	}
 
-	if (sendTimeout > 2.0f / 60.0f) {
+	if (sendClock >= (4.0f / 60.0f)) {
 		client.SendPackets();
-		sendTimeout = 0.0f;
+		sendClock = 0;
 	}
+	
+
+	
 }
 
 void GameState::Draw(float dt)
@@ -166,11 +223,8 @@ void GameState::Draw(float dt)
 	//CLEAR AND SET WINDOW//
 
 	this->_data->window.clear(sf::Color(0x33,0x66,0xff));
-
 	
-	//this->_data->window.draw(_background);
-	if (maze.getGenerated()) {
-		//maze.draw(_data->window,scale);
+	if (maze.isGenerated()) {
 		_data->window.draw(mazeRender);
 	}
 
@@ -178,9 +232,9 @@ void GameState::Draw(float dt)
 		for (int i = 0; i < MAX_PLAYERS; i++) {
 			if (players[i] != NULL) {
 				sf::CircleShape oui;
-				oui.setPosition(players[i]->getX(), players[i]->getY());
+				oui.setPosition(players[i]->getRemotePosition().x, players[i]->getRemotePosition().y);
 				oui.setRadius(30);
-				oui.setOrigin(15, 15);
+				oui.setOrigin(30, 30);
 				oui.setFillColor(sf::Color::Transparent);
 				oui.setOutlineThickness(1);
 				oui.setOutlineColor(sf::Color::Black);
@@ -198,12 +252,8 @@ void GameState::Draw(float dt)
 		score.setString(offlinePlayer->getName().toAnsiString() + " : " + std::to_string(offlinePlayer->getScore()));
 		_data->window.draw(score);
 	}
-		
-	pingTxt.setString(std::to_string(pingDt));
-	_data->window.draw(pingTxt);
-
-
 	
+	   
 	this->_data->window.display();
 }
 
@@ -220,6 +270,18 @@ void GameState::processMessages()
 	}
 }
 
+bool GameState::connectionSucceed()
+{
+	if (client.IsConnected()) {
+		if (currentState == State::DISCONNECTED) {
+			currentState = CONNECTED;
+			std::cout << "Successful connection" << std::endl;
+			return true;
+		}
+	}
+	return false;
+}
+
 void GameState::processMessage(yojimbo::Message * message)
 {
 	switch (message->GetType())
@@ -228,6 +290,19 @@ void GameState::processMessage(yojimbo::Message * message)
 		processLevelStateMessage((LevelStateMessage*)message);
 		break;
 	case (int)GameMessageType::PLAYER_WON_MESSAGE:
+		processPlayerWonMessage((PlayerWonMessage*)message);
+		break;
+	case (int)GameMessageType::EVENT_CD_PLAYER_MESSAGE:
+		processEventCDPlayerMessage((EventCDPlayerMessage*)message);
+		break;
+	case (int)GameMessageType::GENERATE_MAZE_MESSAGE:
+		processGenerateMazeMessage((GenerateMazeMessage*)message);
+		break;
+	case (int)GameMessageType::GAME_EVENT_MESSAGE:
+		processGameEventMessage((GameEventMessage*)message);
+		break;
+	case (int)GameMessageType::PLAYER_NAME_MESSAGE:
+		processPlayerNameMessage((PlayerNameMessage*)message);
 		break;
 	default:
 		break;
@@ -236,76 +311,82 @@ void GameState::processMessage(yojimbo::Message * message)
 
 void GameState::processLevelStateMessage(LevelStateMessage * message)
 {
+	
 	std::vector<EntityModel> playersModel = message->level.getPlayers();
 
 	for (size_t i = 0; i < playersModel.size(); i++) {
 		
 		EntityModel currentPlayer = playersModel[i];
 		int index = currentPlayer.getId();
-		if (players[index] == nullptr) {
-			players[index] = new Entity(currentPlayer.getId(), currentPlayer.getX(), currentPlayer.getY());
+		if (players[index] != nullptr) {
+			Entity* e = players[index];
+			e->updateRemoteFromModel(currentPlayer, scale*TEXTURE_SIZE);
 		}
-		else {
-			Entity* e =players[index];
-			e->updateFromModel(currentPlayer, scale*TEXTURE_SIZE);
-			if (e->getId() == identifier && moveList.getMoveListSize() > 0) {
-				Move m = moveList.getOldestMove();
-				while (m.getMoveId() < currentPlayer.getLastMoveId()) {
-					moveList.removeOldestMove();
-					if (moveList.getMoveListSize() > 0) {
-						m = moveList.getOldestMove();
-					}
-					else {
-						break;
-					}
-				}
+	}
+	
+}
+
+void GameState::processPlayerWonMessage(PlayerWonMessage * message)
+{
+	maze.clearMaze();
+	for (int i = 0; i < MAX_PLAYERS;i++) {
+		if (players[i] != NULL) {
+			players[i]->setRadius(bazeRadius);
+		}
+	}
+	//scale = 1.0f;
+}
+
+void GameState::processEventCDPlayerMessage(EventCDPlayerMessage * message)
+{
+	if (message->clientIndex >= 0 && message->clientIndex < MAX_PLAYERS) {
+		if (message->action == 1) { //create a player 
+			players[message->clientIndex] = new Entity(message->clientIndex, message->x*scale*TEXTURE_SIZE, message->y*scale*TEXTURE_SIZE);
+			std::cout << "Création du joueur " + std::to_string(message->clientIndex) << std::endl;
+			if (message->clientIndex == client.GetClientIndex()) {
+
+				players[message->clientIndex]->getSprite().setFillColor(sf::Color::Green);
+				
+				PlayerNameMessage* message = (PlayerNameMessage*)client.CreateMessage((int)GameMessageType::PLAYER_NAME_MESSAGE);
+				message->name = this->pseudo.toAnsiString();
+				message->clientIndex = 0;
+				client.SendMessage((int)GameChannel::RELIABLE, message);
 			}
 		}
-	}
-
-	//remove old players;
-}
-
-void GameState::closeAll()
-{
-	client.Disconnect();
-	if (server != nullptr) {
-		server->stopServer();
-		delete server;
-		server = nullptr;
+		else if (message->action == 0) { //destroy a player
+			delete players[message->clientIndex];
+		}
 	}
 }
 
-
-/*
-void GameState::removeEntity(sf::Uint16 id)
-{
-	delete players[id];
-}
-
-void GameState::generateLevel(MazeConfig config)
+void GameState::processGenerateMazeMessage(GenerateMazeMessage * message)
 {
 	
-	std::map<sf::Uint16, Entity*>::iterator it;
-	maze.generateMaze(config.getSeed(), config.getWidth(), config.getHeight());
-	scale = baseMazeSize / (float)config.getWidth();
-	for (it = mapIdEntities.begin(); it != mapIdEntities.end(); it++) {
-		mapIdEntities[it->first]->setRadius(bazeRadius*scale);
+	maze.generateMaze(message->seed, message->width, message->height);
+	scale = baseMazeSize / (float)message->width;
+	for (int i = 0; i < MAX_PLAYERS;i++) {
+		if (players[i] != NULL) {
+			players[i]->setRadius(bazeRadius*scale);
+		}
 	}
 	maze.optimizeMazeForRendering();
-	mazeRender.load(maze, sf::Vector2u(50, 50),scale);
-	
+	mazeRender.load(maze, sf::Vector2u(50, 50), scale);
 }
 
-void GameState::levelCompleted(sf::Uint16 id)
+void GameState::processGameEventMessage(GameEventMessage * message)
 {
-	/*
-	std::map<sf::Uint16, Entity*>::iterator it;
-	maze.clearMaze();
-	for (it = mapIdEntities.begin(); it != mapIdEntities.end(); it++) {
-		mapIdEntities[it->first]->setRadius(bazeRadius);
+	std::cout << "Not Implemented" << std::endl;
+}
+
+void GameState::processPlayerNameMessage(PlayerNameMessage* message) {
+
+	if (message->clientIndex >= 0 && message->clientIndex < MAX_PLAYERS) {
+		if (players[message->clientIndex] != NULL) {
+			players[clientIndex]->setName(message->name);
+		}
 	}
 }
-*/
+
+
 
 

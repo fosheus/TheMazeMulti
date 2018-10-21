@@ -35,29 +35,11 @@ public:
 	}
 	YOJIMBO_VIRTUAL_SERIALIZE_FUNCTIONS();
 
-	std::vector<EntityModel>& getPlayers() {
-		return players;
-	}
-	EntityModel* getPlayerByIndex(int playerIndex) {
-		for (int i = 0; i < players.size(); i++) {
-			if (players[i].getId() == playerIndex) {
-				return &players[i];
-			}
-		}
-		return NULL;
-	}
-	void newPlayer(EntityModel player) {
-		players.push_back(player);
-	}
-	void removePlayer(int clientIndex) {
-		std::vector<EntityModel>::iterator it;
-		for (it = players.begin(); it != players.end();it++) {
-			if (it->getId() == clientIndex) {
-				players.erase(it);
-				return;
-			}
-		}
-	}
+	std::vector<EntityModel>& getPlayers();
+	EntityModel* getPlayerByIndex(int playerIndex);
+	void newPlayer(EntityModel player);
+	void removePlayer(int clientIndex);
+	void updatePlayerName(int clientIndex,std::string playerName);
 	~Level();
 
 private :

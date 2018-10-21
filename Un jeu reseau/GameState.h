@@ -1,6 +1,6 @@
 #pragma once
 #include <SFML\Graphics.hpp>
-#include <SFML\Network.hpp>
+#include <SFML/Network/IpAddress.hpp>
 #include <yojimbo.h>
 
 #include "shared.h"
@@ -18,6 +18,9 @@
 #include <iostream>
 #include <string>
 #include <queue>
+#include <string.h>  
+#include <errno.h>  
+
 
 
 using namespace yojimbo;
@@ -39,8 +42,15 @@ private :
 	void processMessages();
 	void processMessage(yojimbo::Message* message);
 	void processLevelStateMessage(LevelStateMessage* message);
+	void processPlayerNameMessage(PlayerNameMessage* message);
+	void processPlayerWonMessage(PlayerWonMessage* message);
+	void processEventCDPlayerMessage(EventCDPlayerMessage* message);
+	void processGenerateMazeMessage(GenerateMazeMessage* message);
+	void processGameEventMessage(GameEventMessage* message);
 
-	void closeAll();
+	bool connectionSucceed();
+
+	void quit();
 private :
 	enum State {
 		DISCONNECTED,
@@ -50,16 +60,19 @@ private :
 private:
 	GameDataRef _data;
 
-	GameServer* server;
 
 	GameConnectionConfig connectionConfig;
 	GameAdapter adapter;
 	yojimbo::Client client;
 	yojimbo::Address endpoint;
-	
-	MoveList moveList;
+	uint64_t clientId;
+	bool hasFocus;
+	float sendClock;
+	float clientTime;
+
 
 	GameState::State currentState;
+	
 	int clientIndex;
 	Maze maze;
 	MazeRender mazeRender;
@@ -68,7 +81,6 @@ private:
 	bool slostUsed[MAX_PLAYERS];
 
 	sf::Clock _clock;
-	float sendTimeout;
 
 	sf::Sprite _background;
 
@@ -86,14 +98,10 @@ private:
 	sf::Text pingTxt;
 
 	const float TEXTURE_SIZE = 50;
-	float scale = 1;
-	const float sideSize = 650;
+	float scale = 1.0f;
 	const float baseMazeSize = 13;
 	const float bazeRadius = 30;
 
-	float pingDt;
-	std::string pingStr;
-	sf::Clock pingClock;
-	sf::Uint32 moveId;
+	uint32_t moveId;
 
 };

@@ -1,5 +1,6 @@
 #pragma once
 #include "Maze.h"
+#include "Game.h"
 #include <SFML\Graphics.hpp>
 class MazeRender : public sf::Drawable
 {

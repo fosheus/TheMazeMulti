@@ -1,28 +1,27 @@
 #pragma once
-#include <SFML\Network.hpp>
-#include "Move.h"
 #include <yojimbo.h>
-
+#include <iostream>
+#include "Move.h"
 using namespace yojimbo;
 
 class EntityModel : public yojimbo::Serializable
 {
 public:
-	EntityModel(sf::Uint16 id,float x,float y,sf::Uint16 score,sf::Uint32 lastMoveId);
+	EntityModel(int id,float x,float y,int score,int lastMoveId);
 	EntityModel() {}
 	EntityModel(int id);
-	void setId(sf::Uint16 id);
+	void setId(int id);
 	void setX(float x);
 	void setY(float y);
-	void setName(sf::String name);
-	void setScore(sf::Uint16 score);
-	void setLastMoveId(sf::Uint32 lastMoveId);
-	sf::Uint16 getId() const;
+	void setName(std::string name);
+	void setScore(int score);
+	void setLastMoveId(int lastMoveId);
+	int getId() const;
 	float getX() const;
 	float getY() const;
-	sf::String getName() const;
-	sf::Uint16 getScore() const;
-	sf::Uint32 getLastMoveId() const;
+	std::string getName() const;
+	int getScore() const;
+	int getLastMoveId() const;
 	void updateFromMove(const Move& move);
 	void rollbackMove(const Move& move);
 
@@ -44,9 +43,9 @@ private :
 	float x;
 	float y;
 	int id;
-	sf::String name;
-	sf::Uint16 score;
-	sf::Uint32 lastMoveId;
+	std::string name;
+	int score;
+	int lastMoveId;
 };
 
 

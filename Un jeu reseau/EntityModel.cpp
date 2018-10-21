@@ -1,6 +1,6 @@
 #include "EntityModel.h"
 
-EntityModel::EntityModel(sf::Uint16 id,float x,float y,sf::Uint16 score,sf::Uint32 lastMoveId)
+EntityModel::EntityModel(int id,float x,float y, int score, int lastMoveId)
 {
 	this->id = id;
 	this->x = x;
@@ -17,10 +17,10 @@ EntityModel::EntityModel(int id)
 	this->x = 0;
 	this->y = 0;
 	this->score = 0;
-	this->lastMoveId = 0;
+	this->lastMoveId = -1;
 }
 
-void EntityModel::setId(sf::Uint16 id)
+void EntityModel::setId(int id)
 {
 	this->id = id;
 }
@@ -36,7 +36,7 @@ void EntityModel::setY(float y)
 	this->y = y;
 }
 
-sf::Uint16 EntityModel::getId() const
+int EntityModel::getId() const
 {
 	return this->id;
 }
@@ -51,32 +51,32 @@ float EntityModel::getY() const
 	return this->y;
 }
 
-void EntityModel::setName(sf::String name)
+void EntityModel::setName(std::string name)
 {
 	this->name = name;
 }
 
-void EntityModel::setScore(sf::Uint16 score)
+void EntityModel::setScore(int score)
 {
 	this->score = score;
 }
 
-void EntityModel::setLastMoveId(sf::Uint32 lastMoveId)
+void EntityModel::setLastMoveId(int lastMoveId)
 {
 	this->lastMoveId = lastMoveId;
 }
 
-sf::String EntityModel::getName() const
+std::string EntityModel::getName() const
 {
 	return this->name;
 }
 
-sf::Uint16 EntityModel::getScore() const
+int EntityModel::getScore() const
 {
 	return score;
 }
 
-sf::Uint32 EntityModel::getLastMoveId() const
+int EntityModel::getLastMoveId() const
 {
 	return lastMoveId;
 }
@@ -98,24 +98,3 @@ EntityModel::~EntityModel()
 {
 }
 
-sf::Packet& operator << (sf::Packet& packet, const EntityModel& em) {
-	return packet << em.getId() << em.getX() << em.getY() << em.getScore()<<em.getLastMoveId();
-}
-
-sf::Packet& operator >> (sf::Packet& packet, EntityModel& em) {
-	sf::Uint16 id;
-	float x;
-	float y;
-	sf::Uint16 score;
-	sf::Uint32 lastMoveId;
-
-	packet >> id >> x >> y >> score>>lastMoveId;
-
-	em.setId(id);
-	em.setX(x);
-	em.setY(y);
-	em.setScore(score);
-	em.setLastMoveId(lastMoveId);
-
-	return packet;
-}

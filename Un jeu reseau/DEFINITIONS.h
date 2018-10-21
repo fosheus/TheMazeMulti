@@ -17,6 +17,7 @@
 
 #define JOIN_MENU_HOST_BUTTON "images/host_button.png"
 #define JOIN_MENU_JOIN_BUTTON "images/join_button.png"
+#define JOIN_MENU_CANCEL_BUTTON "images/cancel_button.png"
 #define JOIN_MENU_TEXT_AREA "images/textArea.png"
 
 #define BASIC_FONT "images/basic_font.ttf"

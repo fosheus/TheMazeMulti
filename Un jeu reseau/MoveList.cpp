@@ -2,7 +2,7 @@
 
 
 
-MoveList::MoveList(sf::Uint16 clientId)
+MoveList::MoveList(int clientId)
 {
 	moveIndex = 0;
 	this->clientId = clientId;
@@ -18,7 +18,7 @@ void MoveList::addMove(Move move)
 	moveList.push_back(move);
 }
 
-sf::Uint32 MoveList::getMoveIndex()
+int MoveList::getMoveIndex()
 {
 	return moveIndex;
 }

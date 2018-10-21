@@ -1,7 +1,6 @@
 #pragma once
 #include <vector>
 #include <SFML\Graphics.hpp>
-#include "Game.h"
 class Maze
 {
 public :
@@ -24,13 +23,12 @@ public :
 
 	};
 public:
-	Maze(GameDataRef data);
+	Maze();
 	const std::vector<std::vector<int>>& generateMaze(unsigned int seed,int width, int height);
 	const std::vector<std::vector<int>>& getMaze();
 	sf::Vector2f getExitPos();
 	void clearMaze();
-	bool getGenerated() { return generated; }
-	void draw(sf::RenderWindow& window,float textureScale);
+	bool isGenerated() { return generated; }
 	int getWidth() const;
 	int getHeight()const;
 	void optimizeMazeForRendering();
@@ -41,7 +39,6 @@ private :
 	
 
 private :
-	GameDataRef _data;
 	std::vector<std::vector<int>> maze;
 	int width;
 	int height;

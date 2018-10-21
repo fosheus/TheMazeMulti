@@ -25,11 +25,16 @@ private:
 
 	sf::Sprite _hostButton;
 	sf::Sprite _joinButton;
+	sf::Sprite _cancelButton;
 	sf::Sprite _addressTextArea;
 	sf::Sprite _nameTextArea;
 
 	bool textAddressHasFocus;
 	bool textNameHasFocus;
+
+	bool joinButtonClicking;
+	bool hostButtonClicking;
+	bool cancelButtonClicking;
 
 
 	sf::String addressStr;
