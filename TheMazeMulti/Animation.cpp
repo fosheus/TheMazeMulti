@@ -17,7 +17,7 @@ Animation::Animation(const sf::Texture * texture, sf::Vector2u imageCount, float
 void Animation::update(int row, float multiplier) {
 	currentImage.y = row;
 	totalTime += multiplier;
-	if (totalTime >= switchTime) {
+	if (totalTime >= switchTime) { 
 		totalTime -= switchTime;
 		currentImage.x++;
 		if (currentImage.x >= imageCount.x) {
