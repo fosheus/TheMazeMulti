@@ -34,6 +34,8 @@
 #include <time.h>
 #include "Level.h"
 #include "IServerConnection.h"
+#include <SFML/Graphics/Color.hpp>
+
 
 
 const uint64_t ProtocolId = 0x11223344556677ULL;
@@ -43,6 +45,7 @@ const int ServerPort = 40000;
 
 static const uint8_t DEFAULT_PRIVATE_KEY[yojimbo::KeyBytes] = { 0 };
 static const int MAX_PLAYERS = 5;
+static const sf::Color PLAYERS_COLORS[MAX_PLAYERS] = {sf::Color(128,255,128),sf::Color(255,128,128),sf::Color(255,128,64),sf::Color(0,128,128),sf::Color(255,128,255)};
 
 enum class GameMessageType
 {
@@ -70,6 +73,7 @@ enum class GameEventType {
 struct GameConnectionConfig : ClientServerConfig {
 	GameConnectionConfig() {
 		numChannels = 2;
+		this->timeout = -1;
 		channel[(int)GameChannel::RELIABLE].type = yojimbo::CHANNEL_TYPE_RELIABLE_ORDERED;
 		channel[(int)GameChannel::UNRELIABLE].type = yojimbo::CHANNEL_TYPE_UNRELIABLE_UNORDERED;
 	}

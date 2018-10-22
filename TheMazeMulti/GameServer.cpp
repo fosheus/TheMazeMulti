@@ -1,7 +1,7 @@
 #include "GameServer.h"
 
 GameServer::GameServer(): maze(), threadServer(&GameServer::run,this), m_adapter(this),
-	server(yojimbo::GetDefaultAllocator(),DEFAULT_PRIVATE_KEY,Address(sf::IpAddress::getLocalAddress().toString().c_str(),ServerPort),m_connectionConfig,m_adapter,100.0f)
+	server(yojimbo::GetDefaultAllocator(),DEFAULT_PRIVATE_KEY,Address(sf::IpAddress::getLocalAddress().toString().c_str(),ServerPort),m_connectionConfig,m_adapter,0.0f)
 {
 }
 
@@ -236,6 +236,12 @@ void GameServer::clientConnection(int clientIndex)
 			message->action = 1;
 			message->clientIndex = clientIndex;
 			server.SendMessage(i, (int)GameChannel::RELIABLE, message);
+			if (i != clientIndex) {
+				EventCDPlayerMessage* message2 = (EventCDPlayerMessage*)server.CreateMessage(clientIndex, (int)GameMessageType::EVENT_CD_PLAYER_MESSAGE);
+				message2->action = 1;
+				message2->clientIndex = i;
+				server.SendMessage(clientIndex, (int)GameChannel::RELIABLE, message2);
+			}
 
 		}
 	}
@@ -255,4 +261,12 @@ void GameServer::clientConnection(int clientIndex)
 void GameServer::clientDisconnection(int clientIndex)
 {
 	level.removePlayer(clientIndex);
+	for (int i = 0; i < MAX_PLAYERS; i++) {
+		if (server.IsClientConnected(i)) {
+			EventCDPlayerMessage * message = (EventCDPlayerMessage*)server.CreateMessage(i, (int)GameMessageType::EVENT_CD_PLAYER_MESSAGE);
+			message->action = 0;
+			message->clientIndex = clientIndex;
+			server.SendMessage(i, (int)GameChannel::RELIABLE, message);
+		}
+	}
 }

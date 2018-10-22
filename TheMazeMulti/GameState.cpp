@@ -272,26 +272,26 @@ void GameState::Draw(float dt)
 			renderPath();
 		}
 	}
+	sf::CircleShape color;
+	color.setOrigin(10, 10);
+	color.setRadius(10);
 
 	if (currentState == State::CONNECTED) {
 		for (int i = 0; i < MAX_PLAYERS; i++) {
 			if (players[i] != NULL) {
-				sf::CircleShape oui;
-				oui.setPosition(players[i]->getRemotePosition().x, players[i]->getRemotePosition().y);
-				oui.setRadius(30);
-				oui.setOrigin(30, 30);
-				oui.setFillColor(sf::Color::Transparent);
-				oui.setOutlineThickness(1);
-				oui.setOutlineColor(sf::Color::Black);
 				this->_data->window.draw(*players[i]);
-				this->_data->window.draw(oui);
 				score.setPosition(_data->window.getSize().x / 5 * 4, _data->window.getSize().y / 5 + 50 * i);
 				score.setString(players[i]->getName().toAnsiString() + " : " + std::to_string(players[i]->getScore()));
+				color.setFillColor(PLAYERS_COLORS[i]);
+				color.setPosition(_data->window.getSize().x -100, _data->window.getSize().y / 5 + 50 * i);
+
 				NetworkInfo info;
 				client.GetNetworkInfo(info);
 				rtt.setString("ping : "+ std::to_string(info.RTT/2.0f));
 				_data->window.draw(rtt);
 				_data->window.draw(score);
+				_data->window.draw(color);
+
 			}
 		}
 		if (players[clientIndex] != NULL) {
@@ -384,10 +384,10 @@ void GameState::processEventCDPlayerMessage(EventCDPlayerMessage * message)
 		if (message->action == 1) { //create a player 
 			players[message->clientIndex] = new Entity(message->clientIndex, message->x*scale*TEXTURE_SIZE, message->y*scale*TEXTURE_SIZE);
 			std::cout << "Création du joueur " + std::to_string(message->clientIndex) << std::endl;
+			players[message->clientIndex]->getSprite().setFillColor(PLAYERS_COLORS[message->clientIndex]);
 			if (message->clientIndex == client.GetClientIndex()) {
-
-				players[message->clientIndex]->getSprite().setFillColor(sf::Color::Green);
 				if (client.CanSendMessage((int)GameChannel::RELIABLE)) {
+					std::cout << "client " + std::to_string(clientIndex) + " envoie son nom " + pseudo.toAnsiString() << std::endl;
 					PlayerNameMessage* message = (PlayerNameMessage*)client.CreateMessage((int)GameMessageType::PLAYER_NAME_MESSAGE);
 					message->name = this->pseudo.toAnsiString();
 					message->clientIndex = 0;
@@ -397,6 +397,7 @@ void GameState::processEventCDPlayerMessage(EventCDPlayerMessage * message)
 		}
 		else if (message->action == 0) { //destroy a player
 			delete players[message->clientIndex];
+			players[message->clientIndex] = NULL;
 		}
 	}
 }
