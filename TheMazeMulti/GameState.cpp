@@ -152,13 +152,10 @@ void GameState::Update(float dt)
 
 	client.AdvanceTime(clientTime);
 	client.ReceivePackets();
-
-	//detects first connection
-	if (currentState == DISCONNECTED && client.IsConnected()) {
-		currentState = CONNECTED;
-		clientIndex = client.GetClientIndex();
-		std::cout << "Successful connection"<<std::endl;
+	if (client.IsConnected()) {
+		processMessages();
 	}
+
 	//detects disconnection
 	if (currentState == CONNECTED && !client.IsConnected()) {
 		players[clientIndex] = NULL;
@@ -170,15 +167,12 @@ void GameState::Update(float dt)
 		quit();
 	}
 
-	if (currentState == CONNECTED) {
-		processMessages();
-		e = players[clientIndex];
-	}
 
 	/*
 	update local state 
 	*/
-	if (e != NULL) {
+	if(currentState == CONNECTED) {
+		e = players[clientIndex];
 		if (updated) {
 			MoveMessage* message = (MoveMessage*)client.CreateMessage((int)GameMessageType::MOVE_MESSAGE);
 			deltaX = deltaX * dt / (TEXTURE_SIZE*scale);
@@ -273,17 +267,16 @@ void GameState::Draw(float dt)
 		}
 	}
 	sf::CircleShape color;
-	color.setOrigin(10, 10);
-	color.setRadius(10);
+	color.setRadius(15);
 
 	if (currentState == State::CONNECTED) {
 		for (int i = 0; i < MAX_PLAYERS; i++) {
 			if (players[i] != NULL) {
 				this->_data->window.draw(*players[i]);
-				score.setPosition(_data->window.getSize().x / 5 * 4, _data->window.getSize().y / 5 + 50 * i);
+				score.setPosition(_data->window.getSize().x / 8 * 7, _data->window.getSize().y / 5 + 50 * i);
 				score.setString(players[i]->getName().toAnsiString() + " : " + std::to_string(players[i]->getScore()));
 				color.setFillColor(PLAYERS_COLORS[i]);
-				color.setPosition(_data->window.getSize().x -100, _data->window.getSize().y / 5 + 50 * i);
+				color.setPosition(_data->window.getSize().x / 8 * 7 -40, _data->window.getSize().y / 5 + 50 * i);
 
 				NetworkInfo info;
 				client.GetNetworkInfo(info);
@@ -344,6 +337,9 @@ void GameState::processMessage(yojimbo::Message * message)
 	case (int)GameMessageType::PLAYER_NAME_MESSAGE:
 		processPlayerNameMessage((PlayerNameMessage*)message);
 		break;
+	case (int)GameMessageType::CONNECTION_MESSAGE:
+		processConnectionMessage((ConnectionMessage*)message);
+		break;
 	default:
 		break;
 	}
@@ -385,15 +381,6 @@ void GameState::processEventCDPlayerMessage(EventCDPlayerMessage * message)
 			players[message->clientIndex] = new Entity(message->clientIndex, message->x*scale*TEXTURE_SIZE, message->y*scale*TEXTURE_SIZE);
 			std::cout << "Création du joueur " + std::to_string(message->clientIndex) << std::endl;
 			players[message->clientIndex]->getSprite().setFillColor(PLAYERS_COLORS[message->clientIndex]);
-			if (message->clientIndex == client.GetClientIndex()) {
-				if (client.CanSendMessage((int)GameChannel::RELIABLE)) {
-					std::cout << "client " + std::to_string(clientIndex) + " envoie son nom " + pseudo.toAnsiString() << std::endl;
-					PlayerNameMessage* message = (PlayerNameMessage*)client.CreateMessage((int)GameMessageType::PLAYER_NAME_MESSAGE);
-					message->name = this->pseudo.toAnsiString();
-					message->clientIndex = 0;
-					client.SendMessage((int)GameChannel::RELIABLE, message);
-				}
-			}
 		}
 		else if (message->action == 0) { //destroy a player
 			delete players[message->clientIndex];
@@ -424,13 +411,36 @@ void GameState::processGameEventMessage(GameEventMessage * message)
 	std::cout << "Not Implemented" << std::endl;
 }
 
-void GameState::processPlayerNameMessage(PlayerNameMessage* message) {
-
-	if (message->clientIndex >= 0 && message->clientIndex < MAX_PLAYERS) {
-		if (players[message->clientIndex] != NULL) {
-			players[clientIndex]->setName(message->name);
+void GameState::processConnectionMessage(ConnectionMessage * message)
+{
+	this->clientIndex = client.GetClientIndex();
+	currentState = CONNECTED;
+	for (int i = 0; i < MAX_PLAYERS; i++) {
+		if (message->names[i].size() > 0) {
+			players[i] = new Entity(i,0, 0);
+			players[i]->setName(message->names[i]);
+			players[i]->getSprite().setFillColor(PLAYERS_COLORS[i]);
 		}
 	}
+	players[clientIndex] = new Entity(clientIndex, 0, 0);
+	players[clientIndex]->getSprite().setFillColor(PLAYERS_COLORS[clientIndex]);
+
+	PlayerNameMessage* playerName = (PlayerNameMessage*)client.CreateMessage((int)GameMessageType::PLAYER_NAME_MESSAGE);
+	playerName->name = this->pseudo.toAnsiString();
+	playerName->clientIndex = clientIndex;
+	client.SendMessage((int)GameChannel::RELIABLE, playerName);
+
+}
+
+void GameState::processPlayerNameMessage(PlayerNameMessage* message) {
+	std::cout << "joueur : " + std::to_string(message->clientIndex) + " prend le nom " + message->name;
+	if (message->clientIndex >= 0 && message->clientIndex < MAX_PLAYERS) {
+		if (players[message->clientIndex] != NULL) {
+			std::cout << " et est traité";
+			players[message->clientIndex]->setName(message->name);
+		}
+	}
+	std::cout<<std::endl;
 }
 
 void GameState::renderPath()

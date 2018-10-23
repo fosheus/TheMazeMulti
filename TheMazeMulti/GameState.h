@@ -51,6 +51,8 @@ private :
 	void processEventCDPlayerMessage(EventCDPlayerMessage* message);
 	void processGenerateMazeMessage(GenerateMazeMessage* message);
 	void processGameEventMessage(GameEventMessage* message);
+	void processConnectionMessage(ConnectionMessage* message);
+
 
 	void renderPath();
 	void quit();

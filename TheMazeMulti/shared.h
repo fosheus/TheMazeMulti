@@ -49,6 +49,7 @@ static const sf::Color PLAYERS_COLORS[MAX_PLAYERS] = {sf::Color(128,255,128),sf:
 
 enum class GameMessageType
 {
+	CONNECTION_MESSAGE,
 	MOVE_MESSAGE,
 	LEVEL_STATE_MESSAGE,
 	PLAYER_NAME_MESSAGE,
@@ -73,11 +74,37 @@ enum class GameEventType {
 struct GameConnectionConfig : ClientServerConfig {
 	GameConnectionConfig() {
 		numChannels = 2;
-		this->timeout = -1;
+		timeout = -1;
 		channel[(int)GameChannel::RELIABLE].type = yojimbo::CHANNEL_TYPE_RELIABLE_ORDERED;
 		channel[(int)GameChannel::UNRELIABLE].type = yojimbo::CHANNEL_TYPE_UNRELIABLE_UNORDERED;
 	}
 	~GameConnectionConfig() {}
+};
+
+struct ConnectionMessage : public Message {
+	std::string names[MAX_PLAYERS];
+	ConnectionMessage() {
+
+	}
+	template<typename Stream> bool Serialize(Stream &stream) {
+		
+		if(Stream::IsWriting){
+			for (int i = 0; i < MAX_PLAYERS; i++) {
+				serialize_string(stream,(char*)&names[i][0], names[i].size() + 2);
+			}
+		}
+		if (Stream::IsReading) {
+			char s[255];
+			int bufferSize=255;
+			for (int i = 0; i < MAX_PLAYERS; i++) {
+				serialize_string(stream, s, bufferSize);
+				names[i] = s;
+			}
+		}
+		return true;
+	}
+
+	YOJIMBO_VIRTUAL_SERIALIZE_FUNCTIONS();
 };
 
 struct MoveMessage : public Message {
@@ -193,6 +220,8 @@ struct GameEventMessage : public Message {
 
 };
 
+
+
 struct PlayerNameMessage : public Message {
 	int clientIndex;
 	std::string name;
@@ -231,6 +260,7 @@ struct PlayerNameMessage : public Message {
 
 
 YOJIMBO_MESSAGE_FACTORY_START(GameMessageFactory,(int)GameMessageType::NUM_MESSAGE_TYPES);
+YOJIMBO_DECLARE_MESSAGE_TYPE((int)GameMessageType::CONNECTION_MESSAGE, ConnectionMessage);
 YOJIMBO_DECLARE_MESSAGE_TYPE((int)GameMessageType::MOVE_MESSAGE, MoveMessage);
 YOJIMBO_DECLARE_MESSAGE_TYPE((int)GameMessageType::LEVEL_STATE_MESSAGE, LevelStateMessage);
 YOJIMBO_DECLARE_MESSAGE_TYPE((int)GameMessageType::PLAYER_WON_MESSAGE, PlayerWonMessage);

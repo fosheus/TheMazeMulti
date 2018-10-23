@@ -95,15 +95,28 @@ void GameServer::processMoveMessage(int clientIndex, MoveMessage* message)
 }
 
 void GameServer::processPlayerNameMessage(int clientIndex, PlayerNameMessage* message) {
-	level.updatePlayerName(clientIndex, message->name);
-
-	for (int i = 0; i < MAX_PLAYERS; i++) {
-		if (server.IsClientConnected(i)) {
-			PlayerNameMessage* outMessage = (PlayerNameMessage*)server.CreateMessage(i, (int)GameMessageType::PLAYER_NAME_MESSAGE);
-			outMessage->clientIndex = clientIndex;
-			outMessage->name = message->name;
-			server.SendMessage(i, (int)GameChannel::RELIABLE, outMessage);
+	if (message->name.size() > 0) {
+		level.updatePlayerName(clientIndex, message->name);
+		std::cout << "le joueur " + std::to_string(clientIndex) + " veut se nommer " + message->name << std::endl;
+		for (int i = 0; i < MAX_PLAYERS; i++) {
+			if (server.IsClientConnected(i)) {
+				PlayerNameMessage* outMessage = (PlayerNameMessage*)server.CreateMessage(i, (int)GameMessageType::PLAYER_NAME_MESSAGE);
+				outMessage->clientIndex = clientIndex;
+				outMessage->name = message->name;
+				server.SendMessage(i, (int)GameChannel::RELIABLE, outMessage);
+			}
 		}
+	}
+	else {
+		for (int i = 0; i < MAX_PLAYERS; i++) {
+			if (server.IsClientConnected(i)) {
+				EventCDPlayerMessage* outMessage = (EventCDPlayerMessage*)server.CreateMessage(i, (int)GameMessageType::EVENT_CD_PLAYER_MESSAGE);
+				outMessage->clientIndex = clientIndex;
+				outMessage->action = 0;
+				server.SendMessage(i, (int)GameChannel::RELIABLE, outMessage);
+			}
+		}
+		server.DisconnectClient(clientIndex);
 	}
 }
 
@@ -229,22 +242,27 @@ void GameServer::broadcastPlayerWon(int clientIndex)
 }
 void GameServer::clientConnection(int clientIndex)
 {
-	level.newPlayer(EntityModel(clientIndex));
+	std::cout << "joueur " << clientIndex << " vient de se connecter" << std::endl;
+	
+	//send connectionMessage to new client
+	ConnectionMessage* connectionMessage = (ConnectionMessage*)server.CreateMessage(clientIndex, (int)GameMessageType::CONNECTION_MESSAGE);
 	for (int i = 0; i < MAX_PLAYERS; i++) {
-		if (server.IsClientConnected(i)) {
-			EventCDPlayerMessage * message = (EventCDPlayerMessage*)server.CreateMessage(i, (int)GameMessageType::EVENT_CD_PLAYER_MESSAGE);
-			message->action = 1;
-			message->clientIndex = clientIndex;
-			server.SendMessage(i, (int)GameChannel::RELIABLE, message);
-			if (i != clientIndex) {
-				EventCDPlayerMessage* message2 = (EventCDPlayerMessage*)server.CreateMessage(clientIndex, (int)GameMessageType::EVENT_CD_PLAYER_MESSAGE);
-				message2->action = 1;
-				message2->clientIndex = i;
-				server.SendMessage(clientIndex, (int)GameChannel::RELIABLE, message2);
-			}
-
+		EntityModel* em = level.getPlayerByIndex(i);
+		if (em != NULL) {
+			connectionMessage->names[i] = em->getName();
+			//send client creation to other clients
+			EventCDPlayerMessage* createPlayerMessage = (EventCDPlayerMessage*)server.CreateMessage(i, (int)GameMessageType::EVENT_CD_PLAYER_MESSAGE);
+			createPlayerMessage->action = 1;
+			createPlayerMessage->clientIndex = clientIndex;
+			server.SendMessage(i, (int)GameChannel::RELIABLE, createPlayerMessage);
 		}
 	}
+	server.SendMessage(clientIndex, (int)GameChannel::RELIABLE, connectionMessage);
+
+
+	//add player to level
+	level.newPlayer(EntityModel(clientIndex));
+	//send maze config if game in progress
 	if (maze.isGenerated()) {
 		GenerateMazeMessage * mazeMessage = (GenerateMazeMessage*)server.CreateMessage(clientIndex, (int)GameMessageType::GENERATE_MAZE_MESSAGE);
 		mazeMessage->seed = mazeConfig.getSeed();
