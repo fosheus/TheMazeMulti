@@ -53,8 +53,8 @@ void GameState::Init()
 
 	arrow.setTexture(this->_data->assets.GetImage(ARROW_POSITION));
 	arrow.setOrigin(arrow.getTexture()->getSize().x / 2, arrow.getTexture()->getSize().y / 2);
-	client.InsecureConnect(DEFAULT_PRIVATE_KEY, clientId, endpoint);
 
+	client.InsecureConnect(DEFAULT_PRIVATE_KEY, clientId, endpoint);
 
 	char addressString[256];
 	client.GetAddress().ToString(addressString, sizeof(addressString));
@@ -152,9 +152,20 @@ void GameState::Update(float dt)
 
 	client.AdvanceTime(clientTime);
 	client.ReceivePackets();
-	if (client.IsConnected()) {
-		processMessages();
+
+	try {
+		if (client.IsConnected()) {
+
+			processMessages();
+		}
+	
 	}
+	catch (const std::exception &e) {
+		std::cout << e.what() << std::endl;
+	}
+
+	
+	
 
 	//detects disconnection
 	if (currentState == CONNECTED && !client.IsConnected()) {
@@ -262,9 +273,6 @@ void GameState::Draw(float dt)
 	
 	if (maze.isGenerated() && mazeStatus) {
 		_data->window.draw(mazeRender);
-		if (displayPath) {
-			renderPath();
-		}
 	}
 	sf::CircleShape color;
 	color.setRadius(15);
@@ -376,8 +384,11 @@ void GameState::processPlayerWonMessage(PlayerWonMessage * message)
 
 void GameState::processEventCDPlayerMessage(EventCDPlayerMessage * message)
 {
+
 	if (message->clientIndex >= 0 && message->clientIndex < MAX_PLAYERS) {
 		if (message->action == 1) { //create a player 
+			std::cout << "client [" << client.GetClientIndex() << "] receives creation message for client " << message->clientIndex << std::endl;
+
 			players[message->clientIndex] = new Entity(message->clientIndex, message->x*scale*TEXTURE_SIZE, message->y*scale*TEXTURE_SIZE);
 			std::cout << "Création du joueur " + std::to_string(message->clientIndex) << std::endl;
 			players[message->clientIndex]->getSprite().setFillColor(PLAYERS_COLORS[message->clientIndex]);
@@ -391,6 +402,8 @@ void GameState::processEventCDPlayerMessage(EventCDPlayerMessage * message)
 
 void GameState::processGenerateMazeMessage(GenerateMazeMessage * message)
 {
+	std::cout << "client ["<<client.GetClientIndex()<<"] receives generate maze " << std::endl;
+
 	mazeStatus = true;
 	maze.generateMaze(message->seed, message->width, message->height);
 	scale = baseMazeSize / (float)message->width;
@@ -401,9 +414,7 @@ void GameState::processGenerateMazeMessage(GenerateMazeMessage * message)
 	}
 	maze.optimizeMazeForRendering();
 	mazeRender.load(maze, sf::Vector2u(50, 50), scale);
-	astar.setStartPoint(Point(0, 1));
-	astar.setDestPoint(Point(maze.getExitPos().x, maze.getExitPos().y));
-	astar.find(maze.getMaze(), maze.getWidth(), maze.getHeight());
+	
 }
 
 void GameState::processGameEventMessage(GameEventMessage * message)
@@ -413,6 +424,8 @@ void GameState::processGameEventMessage(GameEventMessage * message)
 
 void GameState::processConnectionMessage(ConnectionMessage * message)
 {
+	std::cout << "client [" << client.GetClientIndex() << "] receives connection message " << std::endl;
+
 	this->clientIndex = client.GetClientIndex();
 	currentState = CONNECTED;
 	for (int i = 0; i < MAX_PLAYERS; i++) {
@@ -428,35 +441,21 @@ void GameState::processConnectionMessage(ConnectionMessage * message)
 	PlayerNameMessage* playerName = (PlayerNameMessage*)client.CreateMessage((int)GameMessageType::PLAYER_NAME_MESSAGE);
 	playerName->name = this->pseudo.toAnsiString();
 	playerName->clientIndex = clientIndex;
+	std::cout << "client [" << client.GetClientIndex() << "] sends player name message with name=" << pseudo.toAnsiString()<< std::endl;
 	client.SendMessage((int)GameChannel::RELIABLE, playerName);
 
 }
 
 void GameState::processPlayerNameMessage(PlayerNameMessage* message) {
-	std::cout << "joueur : " + std::to_string(message->clientIndex) + " prend le nom " + message->name;
+	std::cout << "client [" << client.GetClientIndex() << "] receives player name message with name=" << message->name <<" and client index="<<message->clientIndex<< std::endl;
 	if (message->clientIndex >= 0 && message->clientIndex < MAX_PLAYERS) {
 		if (players[message->clientIndex] != NULL) {
-			std::cout << " et est traité";
 			players[message->clientIndex]->setName(message->name);
 		}
 	}
 	std::cout<<std::endl;
 }
 
-void GameState::renderPath()
-{
-	sf::CircleShape circle;
-	circle.setRadius(5);
-	circle.setOrigin(5, 5);
-	circle.setFillColor(sf::Color::Red);
-	if (maze.isGenerated() && astar.isPathFound()) {
-		std::vector<Point> path = astar.getPath();
-		for (int i = 0; i < path.size(); i++) {
-			circle.setPosition(path[i].x*TEXTURE_SIZE*scale+ TEXTURE_SIZE * scale/2, path[i].y*TEXTURE_SIZE*scale + TEXTURE_SIZE * scale / 2);
-			_data->window.draw(circle);
-		}
-	}
-}
 
 
 

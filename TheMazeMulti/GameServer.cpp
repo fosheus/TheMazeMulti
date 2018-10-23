@@ -95,14 +95,16 @@ void GameServer::processMoveMessage(int clientIndex, MoveMessage* message)
 }
 
 void GameServer::processPlayerNameMessage(int clientIndex, PlayerNameMessage* message) {
+
+	std::cout << "server receive player name message from : " << clientIndex << " with name = " << message->name<<std::endl;
 	if (message->name.size() > 0) {
 		level.updatePlayerName(clientIndex, message->name);
-		std::cout << "le joueur " + std::to_string(clientIndex) + " veut se nommer " + message->name << std::endl;
 		for (int i = 0; i < MAX_PLAYERS; i++) {
 			if (server.IsClientConnected(i)) {
 				PlayerNameMessage* outMessage = (PlayerNameMessage*)server.CreateMessage(i, (int)GameMessageType::PLAYER_NAME_MESSAGE);
 				outMessage->clientIndex = clientIndex;
 				outMessage->name = message->name;
+				std::cout << "server sends player name message to : " << i << " with name = " << outMessage->name<< "and clientIndex =" <<clientIndex<< std::endl;
 				server.SendMessage(i, (int)GameChannel::RELIABLE, outMessage);
 			}
 		}
@@ -242,8 +244,8 @@ void GameServer::broadcastPlayerWon(int clientIndex)
 }
 void GameServer::clientConnection(int clientIndex)
 {
-	std::cout << "joueur " << clientIndex << " vient de se connecter" << std::endl;
-	
+	std::cout << "server detects client connection on slot :" << clientIndex << std::endl;
+
 	//send connectionMessage to new client
 	ConnectionMessage* connectionMessage = (ConnectionMessage*)server.CreateMessage(clientIndex, (int)GameMessageType::CONNECTION_MESSAGE);
 	for (int i = 0; i < MAX_PLAYERS; i++) {
@@ -254,9 +256,11 @@ void GameServer::clientConnection(int clientIndex)
 			EventCDPlayerMessage* createPlayerMessage = (EventCDPlayerMessage*)server.CreateMessage(i, (int)GameMessageType::EVENT_CD_PLAYER_MESSAGE);
 			createPlayerMessage->action = 1;
 			createPlayerMessage->clientIndex = clientIndex;
+			std::cout << "server sends player creation to client " << i<<" for client "<<clientIndex << std::endl;
 			server.SendMessage(i, (int)GameChannel::RELIABLE, createPlayerMessage);
 		}
 	}
+	std::cout << "server sends connection message to " <<clientIndex << std::endl;
 	server.SendMessage(clientIndex, (int)GameChannel::RELIABLE, connectionMessage);
 
 
@@ -268,6 +272,7 @@ void GameServer::clientConnection(int clientIndex)
 		mazeMessage->seed = mazeConfig.getSeed();
 		mazeMessage->width = mazeConfig.getWidth();
 		mazeMessage->height = mazeConfig.getHeight();
+		std::cout << "server sends generate maze message to " << clientIndex << std::endl;
 		server.SendMessage(clientIndex, (int)GameChannel::RELIABLE, mazeMessage);
 		EntityModel * e = level.getPlayerByIndex(clientIndex);
 		e->setX(0);

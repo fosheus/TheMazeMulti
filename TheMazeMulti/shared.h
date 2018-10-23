@@ -90,7 +90,7 @@ struct ConnectionMessage : public Message {
 		
 		if(Stream::IsWriting){
 			for (int i = 0; i < MAX_PLAYERS; i++) {
-				serialize_string(stream,(char*)&names[i][0], names[i].size() + 2);
+				serialize_string(stream,(char*)&names[i][0], names[i].size() + 8);
 			}
 		}
 		if (Stream::IsReading) {
