@@ -327,6 +327,8 @@ void GameState::processMessage(yojimbo::Message * message)
 {
 	switch (message->GetType())
 	{
+	case (int)GameMessageType::INITIAL_LEVEL_STATE_MESSAGE:
+		processInitialLevelStateMessage((InitialLevelStateMessage*)message);
 	case (int)GameMessageType::LEVEL_STATE_MESSAGE: 
 		processLevelStateMessage((LevelStateMessage*)message);
 		break;
@@ -353,11 +355,51 @@ void GameState::processMessage(yojimbo::Message * message)
 	}
 }
 
+void GameState::processInitialLevelStateMessage(InitialLevelStateMessage * message)
+{
+	//creates all other players locally
+	std::vector<EntityModel> inPlayers = message->level.getPlayers();
+	for (int i = 0; i < inPlayers.size(); i++) {
+		players[inPlayers[i].getId()] = new Entity(inPlayers[i].getId(), inPlayers[i].getX(), inPlayers[i].getY(), inPlayers[i].getName());
+		players[inPlayers[i].getId()]->setScore(inPlayers[i].getScore());
+		players[inPlayers[i].getId()]->getSprite().setFillColor(PLAYERS_COLORS[inPlayers[i].getId()]);
+	}
+	
+	//create own entity locally
+	this->clientIndex = client.GetClientIndex();
+	currentState = CONNECTED;
+	players[clientIndex] = new Entity(clientIndex, 0, 0);
+	players[clientIndex]->getSprite().setFillColor(PLAYERS_COLORS[clientIndex]);
+
+	//generates maze if necessary and update players accordingly
+	if (message->mazeConfig.status == 1) {
+		mazeStatus = true;
+		maze.generateMaze(message->mazeConfig.seed, message->mazeConfig.width, message->mazeConfig.height);
+		scale = baseMazeSize / (float)message->mazeConfig.width;
+		for (int i = 0; i < MAX_PLAYERS; i++) {
+			if (players[i] != NULL) {
+				players[i]->setRadius(bazeRadius*scale);
+			}
+		}
+		maze.optimizeMazeForRendering();
+		mazeRender.load(maze, sf::Vector2u(50, 50), scale);
+	}
+
+	//send his name to the server, now that he knows his clientIndex
+	PlayerNameMessage* playerName = (PlayerNameMessage*)client.CreateMessage((int)GameMessageType::PLAYER_NAME_MESSAGE);
+	playerName->name = this->pseudo.toAnsiString();
+	playerName->clientIndex = clientIndex;
+	std::cout << "client [" << client.GetClientIndex() << "] sends player name message with name=" << pseudo.toAnsiString() << std::endl;
+	client.SendMessage((int)GameChannel::RELIABLE, playerName);
+}
+
 void GameState::processLevelStateMessage(LevelStateMessage * message)
 {
+	//recover all data from the message
 	mazeStatus = message->level.getMazeStatus();
 	std::vector<EntityModel> playersModel = message->level.getPlayers();
 
+	//for all players information received, update the data to the specified player
 	for (size_t i = 0; i < playersModel.size(); i++) {
 		
 		EntityModel currentPlayer = playersModel[i];
@@ -405,8 +447,8 @@ void GameState::processGenerateMazeMessage(GenerateMazeMessage * message)
 	std::cout << "client ["<<client.GetClientIndex()<<"] receives generate maze " << std::endl;
 
 	mazeStatus = true;
-	maze.generateMaze(message->seed, message->width, message->height);
-	scale = baseMazeSize / (float)message->width;
+	maze.generateMaze(message->mazeConfig.seed, message->mazeConfig.width, message->mazeConfig.height);
+	scale = baseMazeSize / (float)message->mazeConfig.width;
 	for (int i = 0; i < MAX_PLAYERS;i++) {
 		if (players[i] != NULL) {
 			players[i]->setRadius(bazeRadius*scale);

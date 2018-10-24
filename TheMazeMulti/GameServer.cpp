@@ -83,13 +83,19 @@ void GameServer::processMoveMessage(int clientIndex, MoveMessage* message)
 {
 	MoveMessage* moveMessage = (MoveMessage*)message;
 	EntityModel *e = level.getPlayerByIndex(clientIndex);
-	Move m(moveMessage->deltaX, moveMessage->deltaY, moveMessage->moveId);
 	if (moveMessage->moveId > e->getLastMoveId()) {
-		e->updateFromMove(m);
-		managePlayerWin(e);
+		Move mX(moveMessage->deltaX, 0, moveMessage->moveId);
+		Move mY(0, moveMessage->deltaY, moveMessage->moveId);
+		
+		e->updateFromMove(mX);
 		if (collisionManagement(e)) {
-			e->rollbackMove(m);
+			e->rollbackMove(mX);
 		}
+		e->updateFromMove(mY);
+		if (collisionManagement(e)) {
+			e->rollbackMove(mY);
+		}
+		managePlayerWin(e);
 
 	}
 }
@@ -143,7 +149,7 @@ void GameServer::processNewGame(int clientIndex)
 		srand(time(NULL));
 		seed = rand();
 		maze.clearMaze();
-		mazeConfig = MazeConfig(seed, width, height);
+		mazeConfig = MazeConfig(true,seed, width, height);
 		maze.generateMaze(seed, width, height);
 		level.setMazeStatus(true);
 		for (int i = 0; i < MAX_PLAYERS; i++) {
@@ -152,9 +158,7 @@ void GameServer::processNewGame(int clientIndex)
 				current->setX(0);
 				current->setY(1);
 				GenerateMazeMessage* outMessage = (GenerateMazeMessage*)server.CreateMessage(i, (int)GameMessageType::GENERATE_MAZE_MESSAGE);
-				outMessage->seed = seed;
-				outMessage->width =width;
-				outMessage->height = height;
+				outMessage->mazeConfig = mazeConfig;
 				server.SendMessage(i, (int)GameChannel::RELIABLE, outMessage);
 			}
 		}
@@ -191,6 +195,8 @@ void GameServer::startServer()
 void GameServer::stopServer()
 {
 	started = false;
+	mazeConfig.status = false;
+	maze.clearMaze();
 	threadServer.wait();
 	
 }
@@ -227,6 +233,7 @@ void GameServer::managePlayerWin(EntityModel * e)
 			broadcastPlayerWon(e->getId());
 			difficulty++;
 			e->setScore(e->getScore() + 1);
+			mazeConfig.status = false;
 			
 		}
 	}
@@ -245,40 +252,33 @@ void GameServer::broadcastPlayerWon(int clientIndex)
 void GameServer::clientConnection(int clientIndex)
 {
 	std::cout << "server detects client connection on slot :" << clientIndex << std::endl;
-
-	//send connectionMessage to new client
-	ConnectionMessage* connectionMessage = (ConnectionMessage*)server.CreateMessage(clientIndex, (int)GameMessageType::CONNECTION_MESSAGE);
+	//send initial state of the game to the new client: players position and maze configuration 
+	InitialLevelStateMessage* message = (InitialLevelStateMessage*)server.CreateMessage(clientIndex, (int)GameMessageType::INITIAL_LEVEL_STATE_MESSAGE);
+	message->mazeConfig = mazeConfig;
+	message->level = level;
+	server.SendMessage(clientIndex, (int)GameChannel::RELIABLE, message);
+	
+	//send player creation to all other players
 	for (int i = 0; i < MAX_PLAYERS; i++) {
 		EntityModel* em = level.getPlayerByIndex(i);
 		if (em != NULL) {
-			connectionMessage->names[i] = em->getName();
 			//send client creation to other clients
 			EventCDPlayerMessage* createPlayerMessage = (EventCDPlayerMessage*)server.CreateMessage(i, (int)GameMessageType::EVENT_CD_PLAYER_MESSAGE);
 			createPlayerMessage->action = 1;
 			createPlayerMessage->clientIndex = clientIndex;
-			std::cout << "server sends player creation to client " << i<<" for client "<<clientIndex << std::endl;
+			std::cout << "server sends player creation to client " << i << " for client " << clientIndex << std::endl;
 			server.SendMessage(i, (int)GameChannel::RELIABLE, createPlayerMessage);
 		}
 	}
-	std::cout << "server sends connection message to " <<clientIndex << std::endl;
-	server.SendMessage(clientIndex, (int)GameChannel::RELIABLE, connectionMessage);
-
-
-	//add player to level
+	//add player to level 
 	level.newPlayer(EntityModel(clientIndex));
-	//send maze config if game in progress
+	//set his position if the maze is generated
 	if (maze.isGenerated()) {
-		GenerateMazeMessage * mazeMessage = (GenerateMazeMessage*)server.CreateMessage(clientIndex, (int)GameMessageType::GENERATE_MAZE_MESSAGE);
-		mazeMessage->seed = mazeConfig.getSeed();
-		mazeMessage->width = mazeConfig.getWidth();
-		mazeMessage->height = mazeConfig.getHeight();
-		std::cout << "server sends generate maze message to " << clientIndex << std::endl;
-		server.SendMessage(clientIndex, (int)GameChannel::RELIABLE, mazeMessage);
-		EntityModel * e = level.getPlayerByIndex(clientIndex);
-		e->setX(0);
-		e->setY(1);
+		level.getPlayers()[clientIndex].setX(0);
+		level.getPlayers()[clientIndex].setY(1);
 
 	}
+
 }
 
 void GameServer::clientDisconnection(int clientIndex)

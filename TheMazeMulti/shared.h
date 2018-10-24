@@ -34,6 +34,7 @@
 #include <time.h>
 #include "Level.h"
 #include "IServerConnection.h"
+#include "MazeConfig.h"
 #include <SFML/Graphics/Color.hpp>
 
 
@@ -52,6 +53,7 @@ enum class GameMessageType
 	CONNECTION_MESSAGE,
 	MOVE_MESSAGE,
 	LEVEL_STATE_MESSAGE,
+	INITIAL_LEVEL_STATE_MESSAGE,
 	PLAYER_NAME_MESSAGE,
 	PLAYER_WON_MESSAGE,
 	EVENT_CD_PLAYER_MESSAGE,
@@ -144,6 +146,72 @@ struct LevelStateMessage : public yojimbo::Message {
 
 };
 
+struct InitialLevelStateMessage : public Message{
+	Level level;
+	MazeConfig mazeConfig;
+	InitialLevelStateMessage() {}
+
+	template<typename Stream> bool Serialize(Stream &stream) {
+		
+		std::vector<EntityModel> players;
+		float x=0;
+		float y=0;
+		int id=0;
+		std::string name;
+		int score=0;
+		int nbPlayers=0;
+		char buffer[255];
+		
+		if (Stream::IsReading) {
+			serialize_int(stream, nbPlayers, 0, MAX_PLAYERS - 1);
+			for (int i = 0; i < nbPlayers; i++) {
+				serialize_int(stream, id, 0, MAX_PLAYERS - 1);
+				serialize_float(stream, x);
+				serialize_float(stream, y);
+				serialize_uint32(stream, score);
+				serialize_string(stream, buffer, 255);
+				EntityModel em(id, x, y, score, 0);
+				em.setName(buffer);
+				level.newPlayer(em);
+			}
+			serialize_bool(stream, mazeConfig.status);
+			if (mazeConfig.status == 1) {
+				serialize_uint32(stream, mazeConfig.seed);
+				serialize_uint32(stream, mazeConfig.width);
+				serialize_uint32(stream, mazeConfig.height);
+			}
+		}
+		if (Stream::IsWriting) {
+			players = level.getPlayers();
+			nbPlayers = players.size();
+			serialize_int(stream, nbPlayers, 0, MAX_PLAYERS - 1);
+			for (int i = 0; i < nbPlayers; i++) {
+				id = players[i].getId();
+				x = players[i].getX();
+				y = players[i].getY();
+				score = players[i].getScore();
+				name = players[i].getName();
+				serialize_int(stream,id, 0, MAX_PLAYERS - 1);
+				serialize_float(stream, x);
+				serialize_float(stream, y);
+				serialize_uint32(stream, score);
+				serialize_string(stream,&name[0], 255);
+
+			}
+			serialize_bool(stream, mazeConfig.status);
+			if (mazeConfig.status == 1) {
+				serialize_uint32(stream, mazeConfig.seed);
+				serialize_uint32(stream, mazeConfig.width);
+				serialize_uint32(stream, mazeConfig.height);
+			}
+		}
+		return true;
+	}
+
+	YOJIMBO_VIRTUAL_SERIALIZE_FUNCTIONS();
+
+};
+
 struct PlayerWonMessage : public Message {
 	int playerIndex;
 
@@ -186,19 +254,15 @@ struct EventCDPlayerMessage : public Message {
 };
 
 struct GenerateMazeMessage : public Message {
-	uint32_t seed;
-	int width;
-	int height;
+	MazeConfig mazeConfig;
 
 	GenerateMazeMessage() {
-		seed = 0;
-		width = 0;
-		height = 0;
+	
 	}
 	template<typename Stream> bool Serialize(Stream &stream) {
-		serialize_uint32(stream, seed);
-		serialize_int(stream, width, 11, 1000);
-		serialize_int(stream, height, 11, 1000);
+		serialize_uint32(stream, mazeConfig.seed);
+		serialize_int(stream, mazeConfig.width, 11, 1000);
+		serialize_int(stream, mazeConfig.height, 11, 1000);
 		return true;
 	}
 	YOJIMBO_VIRTUAL_SERIALIZE_FUNCTIONS();
@@ -263,6 +327,7 @@ YOJIMBO_MESSAGE_FACTORY_START(GameMessageFactory,(int)GameMessageType::NUM_MESSA
 YOJIMBO_DECLARE_MESSAGE_TYPE((int)GameMessageType::CONNECTION_MESSAGE, ConnectionMessage);
 YOJIMBO_DECLARE_MESSAGE_TYPE((int)GameMessageType::MOVE_MESSAGE, MoveMessage);
 YOJIMBO_DECLARE_MESSAGE_TYPE((int)GameMessageType::LEVEL_STATE_MESSAGE, LevelStateMessage);
+YOJIMBO_DECLARE_MESSAGE_TYPE((int)GameMessageType::INITIAL_LEVEL_STATE_MESSAGE, InitialLevelStateMessage);
 YOJIMBO_DECLARE_MESSAGE_TYPE((int)GameMessageType::PLAYER_WON_MESSAGE, PlayerWonMessage);
 YOJIMBO_DECLARE_MESSAGE_TYPE((int)GameMessageType::EVENT_CD_PLAYER_MESSAGE, EventCDPlayerMessage);
 YOJIMBO_DECLARE_MESSAGE_TYPE((int)GameMessageType::GENERATE_MAZE_MESSAGE, GenerateMazeMessage);
