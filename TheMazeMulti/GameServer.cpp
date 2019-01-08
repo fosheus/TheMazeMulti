@@ -7,7 +7,27 @@ GameServer::GameServer(): maze(), threadServer(&GameServer::run,this), m_adapter
 
 GameServer::~GameServer()
 {
+
 	server.Stop();
+}
+
+void GameServer::startServer()
+{
+	server.Start(MAX_PLAYERS);
+	if (!server.IsRunning()) {
+		server.Stop();
+		throw std::runtime_error("Could not start server at port " + std::to_string(this->endpoint.GetPort()));
+	}
+	started = true;
+	difficulty = 0;
+	threadServer.launch();
+}
+
+void GameServer::stopServer()
+{
+	started = false;
+	threadServer.wait();
+
 }
 
 void GameServer::run()
@@ -83,12 +103,18 @@ void GameServer::processMoveMessage(int clientIndex, MoveMessage* message)
 {
 	MoveMessage* moveMessage = (MoveMessage*)message;
 	EntityModel *e = level.getPlayerByIndex(clientIndex);
-	Move m(moveMessage->deltaX, moveMessage->deltaY, moveMessage->moveId);
 	if (moveMessage->moveId > e->getLastMoveId()) {
-		e->updateFromMove(m);
+		Move m1(moveMessage->deltaX,0, moveMessage->moveId);
+		e->updateFromMove(m1);
 		managePlayerWin(e);
 		if (collisionManagement(e)) {
-			e->rollbackMove(m);
+			e->rollbackMove(m1);
+		}
+		Move m2(0,  moveMessage->deltaY, moveMessage->moveId);
+		e->updateFromMove(m2);
+		managePlayerWin(e);
+		if (collisionManagement(e)) {
+			e->rollbackMove(m2);
 		}
 
 	}
@@ -174,24 +200,7 @@ void GameServer::sendLevel()
 }
 
 
-void GameServer::startServer()
-{
-	server.Start(MAX_PLAYERS);
-	if (!server.IsRunning()) {
-		server.Stop();
-		throw std::runtime_error("Could not start server at port " + std::to_string(this->endpoint.GetPort()));
-	}
-	started = true;
-	difficulty = 0;
-	threadServer.launch();
-}
 
-void GameServer::stopServer()
-{
-	started = false;
-	threadServer.wait();
-	
-}
 bool GameServer::collisionManagement(EntityModel * e)
 {
 	if (maze.isGenerated()) {

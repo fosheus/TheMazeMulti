@@ -278,13 +278,13 @@ void GameState::Draw(float dt)
 				color.setFillColor(PLAYERS_COLORS[i]);
 				color.setPosition(_data->window.getSize().x / 8 * 7 -40, _data->window.getSize().y / 5 + 50 * i);
 
-				NetworkInfo info;
+				/*NetworkInfo info;
 				client.GetNetworkInfo(info);
 				rtt.setString("ping : "+ std::to_string(info.RTT/2.0f));
-				_data->window.draw(rtt);
+				_data->window.draw(rtt);*/
 				_data->window.draw(score);
 				_data->window.draw(color);
-
+				
 			}
 		}
 		if (players[clientIndex] != NULL) {
