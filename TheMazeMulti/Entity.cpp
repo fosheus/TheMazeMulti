@@ -57,6 +57,11 @@ sf::Uint16 Entity::getScore()
 	return score;
 }
 
+void Entity::setScore(int score)
+{
+	this->score = score;
+}
+
 void Entity::moveLocal(float deltaX, float deltaY,float multiplier)
 {
 	sprite.setPosition(sprite.getPosition().x+deltaX*multiplier, sprite.getPosition().y + deltaY* multiplier);

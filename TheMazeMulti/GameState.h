@@ -45,6 +45,7 @@ public:
 private :
 	void processMessages();
 	void processMessage(yojimbo::Message* message);
+	void processInitialLevelStateMessage(InitialLevelStateMessage* message);
 	void processLevelStateMessage(LevelStateMessage* message);
 	void processPlayerNameMessage(PlayerNameMessage* message);
 	void processPlayerWonMessage(PlayerWonMessage* message);

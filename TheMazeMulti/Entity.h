@@ -13,6 +13,7 @@ public:
 	sf::Vector2f getLocalPosition();
 	sf::String getName();
 	sf::Uint16 getScore();
+	void setScore(int score);
 	sf::CircleShape& getSprite();
 	void setName(sf::String name);
 	void moveLocal(float deltaX,float deltaY,float multiplier);
