@@ -23,7 +23,7 @@
     <ProjectGuid>{3ED1C2CA-7FE0-4D23-96FF-DBA501A80C75}</ProjectGuid>
     <Keyword>Win32Proj</Keyword>
     <RootNamespace>TheMazeMulti</RootNamespace>
-    <WindowsTargetPlatformVersion>10.0.16299.0</WindowsTargetPlatformVersion>
+    <WindowsTargetPlatformVersion>10.0.17134.0</WindowsTargetPlatformVersion>
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">

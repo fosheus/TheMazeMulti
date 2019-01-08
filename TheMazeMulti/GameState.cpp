@@ -53,8 +53,8 @@ void GameState::Init()
 
 	arrow.setTexture(this->_data->assets.GetImage(ARROW_POSITION));
 	arrow.setOrigin(arrow.getTexture()->getSize().x / 2, arrow.getTexture()->getSize().y / 2);
-	client.InsecureConnect(DEFAULT_PRIVATE_KEY, clientId, endpoint);
 
+	client.InsecureConnect(DEFAULT_PRIVATE_KEY, clientId, endpoint);
 
 	char addressString[256];
 	client.GetAddress().ToString(addressString, sizeof(addressString));
@@ -153,12 +153,20 @@ void GameState::Update(float dt)
 	client.AdvanceTime(clientTime);
 	client.ReceivePackets();
 
-	//detects first connection
-	if (currentState == DISCONNECTED && client.IsConnected()) {
-		currentState = CONNECTED;
-		clientIndex = client.GetClientIndex();
-		std::cout << "Successful connection"<<std::endl;
+	try {
+		if (client.IsConnected()) {
+
+			processMessages();
+		}
+	
 	}
+	catch (const std::exception &e) {
+		std::cout << e.what() << std::endl;
+	}
+
+	
+	
+
 	//detects disconnection
 	if (currentState == CONNECTED && !client.IsConnected()) {
 		players[clientIndex] = NULL;
@@ -170,15 +178,12 @@ void GameState::Update(float dt)
 		quit();
 	}
 
-	if (currentState == CONNECTED) {
-		processMessages();
-		e = players[clientIndex];
-	}
 
 	/*
 	update local state 
 	*/
-	if (e != NULL) {
+	if(currentState == CONNECTED) {
+		e = players[clientIndex];
 		if (updated) {
 			MoveMessage* message = (MoveMessage*)client.CreateMessage((int)GameMessageType::MOVE_MESSAGE);
 			deltaX = deltaX * dt / (TEXTURE_SIZE*scale);
@@ -268,30 +273,26 @@ void GameState::Draw(float dt)
 	
 	if (maze.isGenerated() && mazeStatus) {
 		_data->window.draw(mazeRender);
-		if (displayPath) {
-			renderPath();
-		}
 	}
 	sf::CircleShape color;
-	color.setOrigin(10, 10);
-	color.setRadius(10);
+	color.setRadius(15);
 
 	if (currentState == State::CONNECTED) {
 		for (int i = 0; i < MAX_PLAYERS; i++) {
 			if (players[i] != NULL) {
 				this->_data->window.draw(*players[i]);
-				score.setPosition(_data->window.getSize().x / 5 * 4, _data->window.getSize().y / 5 + 50 * i);
+				score.setPosition(_data->window.getSize().x / 8 * 7, _data->window.getSize().y / 5 + 50 * i);
 				score.setString(players[i]->getName().toAnsiString() + " : " + std::to_string(players[i]->getScore()));
 				color.setFillColor(PLAYERS_COLORS[i]);
-				color.setPosition(_data->window.getSize().x -100, _data->window.getSize().y / 5 + 50 * i);
+				color.setPosition(_data->window.getSize().x / 8 * 7 -40, _data->window.getSize().y / 5 + 50 * i);
 
-				NetworkInfo info;
+				/*NetworkInfo info;
 				client.GetNetworkInfo(info);
 				rtt.setString("ping : "+ std::to_string(info.RTT/2.0f));
-				_data->window.draw(rtt);
+				_data->window.draw(rtt);*/
 				_data->window.draw(score);
 				_data->window.draw(color);
-
+				
 			}
 		}
 		if (players[clientIndex] != NULL) {
@@ -326,6 +327,8 @@ void GameState::processMessage(yojimbo::Message * message)
 {
 	switch (message->GetType())
 	{
+	case (int)GameMessageType::INITIAL_LEVEL_STATE_MESSAGE:
+		processInitialLevelStateMessage((InitialLevelStateMessage*)message);
 	case (int)GameMessageType::LEVEL_STATE_MESSAGE: 
 		processLevelStateMessage((LevelStateMessage*)message);
 		break;
@@ -344,16 +347,59 @@ void GameState::processMessage(yojimbo::Message * message)
 	case (int)GameMessageType::PLAYER_NAME_MESSAGE:
 		processPlayerNameMessage((PlayerNameMessage*)message);
 		break;
+	case (int)GameMessageType::CONNECTION_MESSAGE:
+		processConnectionMessage((ConnectionMessage*)message);
+		break;
 	default:
 		break;
 	}
 }
 
+void GameState::processInitialLevelStateMessage(InitialLevelStateMessage * message)
+{
+	//creates all other players locally
+	std::vector<EntityModel> inPlayers = message->level.getPlayers();
+	for (int i = 0; i < inPlayers.size(); i++) {
+		players[inPlayers[i].getId()] = new Entity(inPlayers[i].getId(), inPlayers[i].getX(), inPlayers[i].getY(), inPlayers[i].getName());
+		players[inPlayers[i].getId()]->setScore(inPlayers[i].getScore());
+		players[inPlayers[i].getId()]->getSprite().setFillColor(PLAYERS_COLORS[inPlayers[i].getId()]);
+	}
+	
+	//create own entity locally
+	this->clientIndex = client.GetClientIndex();
+	currentState = CONNECTED;
+	players[clientIndex] = new Entity(clientIndex, 0, 0);
+	players[clientIndex]->getSprite().setFillColor(PLAYERS_COLORS[clientIndex]);
+
+	//generates maze if necessary and update players accordingly
+	if (message->mazeConfig.status == 1) {
+		mazeStatus = true;
+		maze.generateMaze(message->mazeConfig.seed, message->mazeConfig.width, message->mazeConfig.height);
+		scale = baseMazeSize / (float)message->mazeConfig.width;
+		for (int i = 0; i < MAX_PLAYERS; i++) {
+			if (players[i] != NULL) {
+				players[i]->setRadius(bazeRadius*scale);
+			}
+		}
+		maze.optimizeMazeForRendering();
+		mazeRender.load(maze, sf::Vector2u(50, 50), scale);
+	}
+
+	//send his name to the server, now that he knows his clientIndex
+	PlayerNameMessage* playerName = (PlayerNameMessage*)client.CreateMessage((int)GameMessageType::PLAYER_NAME_MESSAGE);
+	playerName->name = this->pseudo.toAnsiString();
+	playerName->clientIndex = clientIndex;
+	std::cout << "client [" << client.GetClientIndex() << "] sends player name message with name=" << pseudo.toAnsiString() << std::endl;
+	client.SendMessage((int)GameChannel::RELIABLE, playerName);
+}
+
 void GameState::processLevelStateMessage(LevelStateMessage * message)
 {
+	//recover all data from the message
 	mazeStatus = message->level.getMazeStatus();
 	std::vector<EntityModel> playersModel = message->level.getPlayers();
 
+	//for all players information received, update the data to the specified player
 	for (size_t i = 0; i < playersModel.size(); i++) {
 		
 		EntityModel currentPlayer = playersModel[i];
@@ -380,20 +426,14 @@ void GameState::processPlayerWonMessage(PlayerWonMessage * message)
 
 void GameState::processEventCDPlayerMessage(EventCDPlayerMessage * message)
 {
+
 	if (message->clientIndex >= 0 && message->clientIndex < MAX_PLAYERS) {
 		if (message->action == 1) { //create a player 
+			std::cout << "client [" << client.GetClientIndex() << "] receives creation message for client " << message->clientIndex << std::endl;
+
 			players[message->clientIndex] = new Entity(message->clientIndex, message->x*scale*TEXTURE_SIZE, message->y*scale*TEXTURE_SIZE);
 			std::cout << "Création du joueur " + std::to_string(message->clientIndex) << std::endl;
 			players[message->clientIndex]->getSprite().setFillColor(PLAYERS_COLORS[message->clientIndex]);
-			if (message->clientIndex == client.GetClientIndex()) {
-				if (client.CanSendMessage((int)GameChannel::RELIABLE)) {
-					std::cout << "client " + std::to_string(clientIndex) + " envoie son nom " + pseudo.toAnsiString() << std::endl;
-					PlayerNameMessage* message = (PlayerNameMessage*)client.CreateMessage((int)GameMessageType::PLAYER_NAME_MESSAGE);
-					message->name = this->pseudo.toAnsiString();
-					message->clientIndex = 0;
-					client.SendMessage((int)GameChannel::RELIABLE, message);
-				}
-			}
 		}
 		else if (message->action == 0) { //destroy a player
 			delete players[message->clientIndex];
@@ -404,9 +444,11 @@ void GameState::processEventCDPlayerMessage(EventCDPlayerMessage * message)
 
 void GameState::processGenerateMazeMessage(GenerateMazeMessage * message)
 {
+	std::cout << "client ["<<client.GetClientIndex()<<"] receives generate maze " << std::endl;
+
 	mazeStatus = true;
-	maze.generateMaze(message->seed, message->width, message->height);
-	scale = baseMazeSize / (float)message->width;
+	maze.generateMaze(message->mazeConfig.seed, message->mazeConfig.width, message->mazeConfig.height);
+	scale = baseMazeSize / (float)message->mazeConfig.width;
 	for (int i = 0; i < MAX_PLAYERS;i++) {
 		if (players[i] != NULL) {
 			players[i]->setRadius(bazeRadius*scale);
@@ -414,9 +456,7 @@ void GameState::processGenerateMazeMessage(GenerateMazeMessage * message)
 	}
 	maze.optimizeMazeForRendering();
 	mazeRender.load(maze, sf::Vector2u(50, 50), scale);
-	astar.setStartPoint(Point(0, 1));
-	astar.setDestPoint(Point(maze.getExitPos().x, maze.getExitPos().y));
-	astar.find(maze.getMaze(), maze.getWidth(), maze.getHeight());
+	
 }
 
 void GameState::processGameEventMessage(GameEventMessage * message)
@@ -424,29 +464,40 @@ void GameState::processGameEventMessage(GameEventMessage * message)
 	std::cout << "Not Implemented" << std::endl;
 }
 
-void GameState::processPlayerNameMessage(PlayerNameMessage* message) {
+void GameState::processConnectionMessage(ConnectionMessage * message)
+{
+	std::cout << "client [" << client.GetClientIndex() << "] receives connection message " << std::endl;
 
+	this->clientIndex = client.GetClientIndex();
+	currentState = CONNECTED;
+	for (int i = 0; i < MAX_PLAYERS; i++) {
+		if (message->names[i].size() > 0) {
+			players[i] = new Entity(i,0, 0);
+			players[i]->setName(message->names[i]);
+			players[i]->getSprite().setFillColor(PLAYERS_COLORS[i]);
+		}
+	}
+	players[clientIndex] = new Entity(clientIndex, 0, 0);
+	players[clientIndex]->getSprite().setFillColor(PLAYERS_COLORS[clientIndex]);
+
+	PlayerNameMessage* playerName = (PlayerNameMessage*)client.CreateMessage((int)GameMessageType::PLAYER_NAME_MESSAGE);
+	playerName->name = this->pseudo.toAnsiString();
+	playerName->clientIndex = clientIndex;
+	std::cout << "client [" << client.GetClientIndex() << "] sends player name message with name=" << pseudo.toAnsiString()<< std::endl;
+	client.SendMessage((int)GameChannel::RELIABLE, playerName);
+
+}
+
+void GameState::processPlayerNameMessage(PlayerNameMessage* message) {
+	std::cout << "client [" << client.GetClientIndex() << "] receives player name message with name=" << message->name <<" and client index="<<message->clientIndex<< std::endl;
 	if (message->clientIndex >= 0 && message->clientIndex < MAX_PLAYERS) {
 		if (players[message->clientIndex] != NULL) {
-			players[clientIndex]->setName(message->name);
+			players[message->clientIndex]->setName(message->name);
 		}
 	}
+	std::cout<<std::endl;
 }
 
-void GameState::renderPath()
-{
-	sf::CircleShape circle;
-	circle.setRadius(5);
-	circle.setOrigin(5, 5);
-	circle.setFillColor(sf::Color::Red);
-	if (maze.isGenerated() && astar.isPathFound()) {
-		std::vector<Point> path = astar.getPath();
-		for (int i = 0; i < path.size(); i++) {
-			circle.setPosition(path[i].x*TEXTURE_SIZE*scale+ TEXTURE_SIZE * scale/2, path[i].y*TEXTURE_SIZE*scale + TEXTURE_SIZE * scale / 2);
-			_data->window.draw(circle);
-		}
-	}
-}
 
 
 

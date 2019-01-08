@@ -7,8 +7,22 @@ GameServer::GameServer(): maze(), threadServer(&GameServer::run,this), m_adapter
 
 GameServer::~GameServer()
 {
+
 	server.Stop();
 }
+
+void GameServer::startServer()
+{
+	server.Start(MAX_PLAYERS);
+	if (!server.IsRunning()) {
+		server.Stop();
+		throw std::runtime_error("Could not start server at port " + std::to_string(this->endpoint.GetPort()));
+	}
+	started = true;
+	difficulty = 0;
+	threadServer.launch();
+}
+
 
 void GameServer::run()
 {
@@ -83,27 +97,49 @@ void GameServer::processMoveMessage(int clientIndex, MoveMessage* message)
 {
 	MoveMessage* moveMessage = (MoveMessage*)message;
 	EntityModel *e = level.getPlayerByIndex(clientIndex);
-	Move m(moveMessage->deltaX, moveMessage->deltaY, moveMessage->moveId);
 	if (moveMessage->moveId > e->getLastMoveId()) {
-		e->updateFromMove(m);
-		managePlayerWin(e);
+
+		Move mX(moveMessage->deltaX, 0, moveMessage->moveId);
+		Move mY(0, moveMessage->deltaY, moveMessage->moveId);
+		
+		e->updateFromMove(mX);
 		if (collisionManagement(e)) {
-			e->rollbackMove(m);
+			e->rollbackMove(mX);
 		}
+		e->updateFromMove(mY);
+		if (collisionManagement(e)) {
+			e->rollbackMove(mY);
+		}
+		managePlayerWin(e);
 
 	}
 }
 
 void GameServer::processPlayerNameMessage(int clientIndex, PlayerNameMessage* message) {
-	level.updatePlayerName(clientIndex, message->name);
 
-	for (int i = 0; i < MAX_PLAYERS; i++) {
-		if (server.IsClientConnected(i)) {
-			PlayerNameMessage* outMessage = (PlayerNameMessage*)server.CreateMessage(i, (int)GameMessageType::PLAYER_NAME_MESSAGE);
-			outMessage->clientIndex = clientIndex;
-			outMessage->name = message->name;
-			server.SendMessage(i, (int)GameChannel::RELIABLE, outMessage);
+	std::cout << "server receive player name message from : " << clientIndex << " with name = " << message->name<<std::endl;
+	if (message->name.size() > 0) {
+		level.updatePlayerName(clientIndex, message->name);
+		for (int i = 0; i < MAX_PLAYERS; i++) {
+			if (server.IsClientConnected(i)) {
+				PlayerNameMessage* outMessage = (PlayerNameMessage*)server.CreateMessage(i, (int)GameMessageType::PLAYER_NAME_MESSAGE);
+				outMessage->clientIndex = clientIndex;
+				outMessage->name = message->name;
+				std::cout << "server sends player name message to : " << i << " with name = " << outMessage->name<< "and clientIndex =" <<clientIndex<< std::endl;
+				server.SendMessage(i, (int)GameChannel::RELIABLE, outMessage);
+			}
 		}
+	}
+	else {
+		for (int i = 0; i < MAX_PLAYERS; i++) {
+			if (server.IsClientConnected(i)) {
+				EventCDPlayerMessage* outMessage = (EventCDPlayerMessage*)server.CreateMessage(i, (int)GameMessageType::EVENT_CD_PLAYER_MESSAGE);
+				outMessage->clientIndex = clientIndex;
+				outMessage->action = 0;
+				server.SendMessage(i, (int)GameChannel::RELIABLE, outMessage);
+			}
+		}
+		server.DisconnectClient(clientIndex);
 	}
 }
 
@@ -128,7 +164,7 @@ void GameServer::processNewGame(int clientIndex)
 		srand(time(NULL));
 		seed = rand();
 		maze.clearMaze();
-		mazeConfig = MazeConfig(seed, width, height);
+		mazeConfig = MazeConfig(true,seed, width, height);
 		maze.generateMaze(seed, width, height);
 		level.setMazeStatus(true);
 		for (int i = 0; i < MAX_PLAYERS; i++) {
@@ -137,11 +173,12 @@ void GameServer::processNewGame(int clientIndex)
 				current->setX(0);
 				current->setY(1);
 				GenerateMazeMessage* outMessage = (GenerateMazeMessage*)server.CreateMessage(i, (int)GameMessageType::GENERATE_MAZE_MESSAGE);
-				outMessage->seed = seed;
-				outMessage->width =width;
-				outMessage->height = height;
+				outMessage->mazeConfig = mazeConfig;
 				server.SendMessage(i, (int)GameChannel::RELIABLE, outMessage);
 			}
+
+
+
 		}
 	}
 }
@@ -161,21 +198,12 @@ void GameServer::sendLevel()
 }
 
 
-void GameServer::startServer()
-{
-	server.Start(MAX_PLAYERS);
-	if (!server.IsRunning()) {
-		server.Stop();
-		throw std::runtime_error("Could not start server at port " + std::to_string(this->endpoint.GetPort()));
-	}
-	started = true;
-	difficulty = 0;
-	threadServer.launch();
-}
 
 void GameServer::stopServer()
 {
 	started = false;
+	mazeConfig.status = false;
+	maze.clearMaze();
 	threadServer.wait();
 	
 }
@@ -212,6 +240,7 @@ void GameServer::managePlayerWin(EntityModel * e)
 			broadcastPlayerWon(e->getId());
 			difficulty++;
 			e->setScore(e->getScore() + 1);
+			mazeConfig.status = false;
 			
 		}
 	}
@@ -229,33 +258,34 @@ void GameServer::broadcastPlayerWon(int clientIndex)
 }
 void GameServer::clientConnection(int clientIndex)
 {
-	level.newPlayer(EntityModel(clientIndex));
+	std::cout << "server detects client connection on slot :" << clientIndex << std::endl;
+	//send initial state of the game to the new client: players position and maze configuration 
+	InitialLevelStateMessage* message = (InitialLevelStateMessage*)server.CreateMessage(clientIndex, (int)GameMessageType::INITIAL_LEVEL_STATE_MESSAGE);
+	message->mazeConfig = mazeConfig;
+	message->level = level;
+	server.SendMessage(clientIndex, (int)GameChannel::RELIABLE, message);
+	
+	//send player creation to all other players
 	for (int i = 0; i < MAX_PLAYERS; i++) {
-		if (server.IsClientConnected(i)) {
-			EventCDPlayerMessage * message = (EventCDPlayerMessage*)server.CreateMessage(i, (int)GameMessageType::EVENT_CD_PLAYER_MESSAGE);
-			message->action = 1;
-			message->clientIndex = clientIndex;
-			server.SendMessage(i, (int)GameChannel::RELIABLE, message);
-			if (i != clientIndex) {
-				EventCDPlayerMessage* message2 = (EventCDPlayerMessage*)server.CreateMessage(clientIndex, (int)GameMessageType::EVENT_CD_PLAYER_MESSAGE);
-				message2->action = 1;
-				message2->clientIndex = i;
-				server.SendMessage(clientIndex, (int)GameChannel::RELIABLE, message2);
-			}
-
+		EntityModel* em = level.getPlayerByIndex(i);
+		if (em != NULL) {
+			//send client creation to other clients
+			EventCDPlayerMessage* createPlayerMessage = (EventCDPlayerMessage*)server.CreateMessage(i, (int)GameMessageType::EVENT_CD_PLAYER_MESSAGE);
+			createPlayerMessage->action = 1;
+			createPlayerMessage->clientIndex = clientIndex;
+			std::cout << "server sends player creation to client " << i << " for client " << clientIndex << std::endl;
+			server.SendMessage(i, (int)GameChannel::RELIABLE, createPlayerMessage);
 		}
 	}
+	//add player to level 
+	level.newPlayer(EntityModel(clientIndex));
+	//set his position if the maze is generated
 	if (maze.isGenerated()) {
-		GenerateMazeMessage * mazeMessage = (GenerateMazeMessage*)server.CreateMessage(clientIndex, (int)GameMessageType::GENERATE_MAZE_MESSAGE);
-		mazeMessage->seed = mazeConfig.getSeed();
-		mazeMessage->width = mazeConfig.getWidth();
-		mazeMessage->height = mazeConfig.getHeight();
-		server.SendMessage(clientIndex, (int)GameChannel::RELIABLE, mazeMessage);
-		EntityModel * e = level.getPlayerByIndex(clientIndex);
-		e->setX(0);
-		e->setY(1);
+		level.getPlayers()[clientIndex].setX(0);
+		level.getPlayers()[clientIndex].setY(1);
 
 	}
+
 }
 
 void GameServer::clientDisconnection(int clientIndex)

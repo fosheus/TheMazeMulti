@@ -45,12 +45,15 @@ public:
 private :
 	void processMessages();
 	void processMessage(yojimbo::Message* message);
+	void processInitialLevelStateMessage(InitialLevelStateMessage* message);
 	void processLevelStateMessage(LevelStateMessage* message);
 	void processPlayerNameMessage(PlayerNameMessage* message);
 	void processPlayerWonMessage(PlayerWonMessage* message);
 	void processEventCDPlayerMessage(EventCDPlayerMessage* message);
 	void processGenerateMazeMessage(GenerateMazeMessage* message);
 	void processGameEventMessage(GameEventMessage* message);
+	void processConnectionMessage(ConnectionMessage* message);
+
 
 	void renderPath();
 	void quit();
